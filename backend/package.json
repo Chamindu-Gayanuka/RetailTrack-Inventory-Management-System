@@ -1,0 +1,36 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "RetailTrack is a modern inventory management system designed to help retail businesses manage products, stock, sales, orders, and daily operations efficiently.",
+  "keywords": [
+    "Retailtrack",
+    "Inventory Management System"
+  ],
+  "homepage": "https://github.com/Chamindu-Gayanuka/RetailTrack-Inventory-Management-System#readme",
+  "bugs": {
+    "url": "https://github.com/Chamindu-Gayanuka/RetailTrack-Inventory-Management-System/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chamindu-Gayanuka/RetailTrack-Inventory-Management-System.git"
+  },
+  "license": "ISC",
+  "author": "RetailTrack Developers",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
