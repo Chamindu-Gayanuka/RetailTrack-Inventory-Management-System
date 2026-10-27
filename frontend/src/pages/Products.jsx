@@ -29,6 +29,7 @@ import {
     Toggle,
 } from '../components/UI.jsx';
 import RestockModal from '../components/RestockModal.jsx';
+import ProductImage, { ProductImageUpload } from '../components/ProductImage.jsx';
 
 function ProductDetail({ product, category, onClose, onEdit, onRestock, canManage, canRestock }) {
     if (!product) return null;
@@ -43,7 +44,7 @@ function ProductDetail({ product, category, onClose, onEdit, onRestock, canManag
             footer={<><button className="button button-secondary" onClick={onClose}>Close</button>{canRestock && <button className="button button-secondary" onClick={onRestock}><PackagePlus size={17} />Add stock</button>}{canManage && <button className="button button-primary" onClick={onEdit}><Pencil size={16} />Edit product</button>}</>}
         >
             <div className="product-detail-head">
-                <div className="product-detail-icon"><Package size={30} /></div>
+                <ProductImage product={product} size="large" />
                 <div><div className="product-detail-title"><h3>{product.name}</h3><StatusBadge status={status} /></div><p>{product.sku} · {category?.name || 'Uncategorized'}</p></div>
             </div>
             <div className="product-detail-stats">
@@ -133,7 +134,7 @@ export default function Products({ navigate, viewId, initialCategory }) {
                 {visible.length ? <div className="table-wrap"><table className="data-table product-table"><thead><tr><th>SKU</th><th>Product Name</th><th>Category</th><th>Selling Price</th><th>Current Stock</th><th>Minimum Stock</th><th>Stock</th><th className="actions-column">Actions</th></tr></thead><tbody>
                     {visible.map((product) => <tr key={product.id} className={!product.active ? 'inactive-row' : ''}>
                         <td className="monospace muted">{product.sku}</td>
-                        <td><button className="product-table-name" onClick={() => setSelectedId(product.id)}>{product.name}</button></td>
+                        <td><button className="product-table-name" onClick={() => setSelectedId(product.id)}><ProductImage product={product} size="small" /><span>{product.name}</span></button></td>
                         <td className="muted">{categoryName(product.categoryId)}</td>
                         <td><strong>{currency(product.price)}</strong></td>
                         <td><strong className={getStockStatus(product) === 'out' ? 'text-danger' : ''}>{number(product.stock)}</strong></td>
@@ -164,7 +165,7 @@ export default function Products({ navigate, viewId, initialCategory }) {
 }
 
 const blankProduct = {
-    name: '', sku: '', categoryId: '', price: '', cost: '', minStock: 8, stock: '', active: true,
+    name: '', sku: '', categoryId: '', price: '', cost: '', minStock: 8, stock: '', active: true, image: '',
 };
 
 export function ProductForm({ navigate, productId }) {
@@ -214,6 +215,7 @@ export function ProductForm({ navigate, productId }) {
                         <Field label="Product Name" required error={errors.name}><input value={form.name} onChange={(event) => set('name', event.target.value)} placeholder="e.g. Plastic Lunch Box" /></Field>
                         <Field label="SKU / Product Code" required error={errors.sku} hint="Use a unique code such as PL-010."><input className="monospace" value={form.sku} onChange={(event) => set('sku', event.target.value)} placeholder="e.g. PL-010" /></Field>
                         <Field label="Category" required error={errors.categoryId}><select value={form.categoryId} onChange={(event) => set('categoryId', event.target.value)}><option value="">Select a category</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></Field>
+                        <ProductImageUpload value={form.image || ''} onChange={(image) => set('image', image)} />
                         <div className="active-toggle-field"><Toggle checked={form.active} onChange={(value) => set('active', value)} label="Set product as Active" description="Active products can be selected when recording a sale." /></div>
                     </section>
                     <section className="form-section">
