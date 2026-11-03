@@ -8,23 +8,24 @@ import {
     Plus,
     Trash2,
 } from 'lucide-react';
-import { useStore } from '../StoreContext.jsx';
+import { useStore } from '../store-context.js';
 import { currency, getStockStatus } from '../data.js';
 import { Field, Modal, PageHeader, ProgressBar, StatCard } from '../components/UI.jsx';
 
 const palette = ['#6574e8', '#2f9d8f', '#e5a43a', '#de6c75', '#3d9bc2', '#9b6bd6'];
 
+/** @param {{ open: boolean, onClose: () => void, category?: import('../types.js').Category | null }} props */
 function CategoryForm({ open, onClose, category }) {
     const { categories, addCategory, updateCategory } = useStore();
-    const [form, setForm] = useState({ name: '', description: '', color: palette[0] });
+    const [form, setForm] = useState(/** @type {{ name: string, description: string, color: string }} */({ name: '', description: '', color: palette[0] }));
     const [error, setError] = useState('');
     useEffect(() => {
         if (open) {
-            setForm(category ? { ...category } : { name: '', description: '', color: palette[categories.length % palette.length] });
+            setForm(category ? { name: category.name, description: category.description || '', color: category.color || '#6574e8' } : { name: '', description: '', color: palette[categories.length % palette.length] || '#6574e8' });
             setError('');
         }
     }, [open, category, categories.length]);
-    const submit = (event) => {
+    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!form.name.trim()) { setError('Category name is required.'); return; }
         if (categories.some((item) => item.id !== category?.id && item.name.toLowerCase() === form.name.trim().toLowerCase())) { setError('A category with this name already exists.'); return; }
@@ -36,21 +37,22 @@ function CategoryForm({ open, onClose, category }) {
         <Modal open={open} onClose={onClose} title={category ? 'Edit category' : 'Create category'} subtitle="Organize related products for easier tracking and reporting." footer={<><button className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" type="submit" form="category-form">{category ? 'Save changes' : 'Create category'}</button></>}>
             <form id="category-form" onSubmit={submit} className="form-stack">
                 <Field label="Category name" required error={error}><input value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); setError(''); }} placeholder="e.g. Kitchen Essentials" autoFocus /></Field>
-                <Field label="Description" hint="A short note about the products in this category."><textarea rows="3" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What belongs in this category?" /></Field>
-                <Field label="Category color"><div className="color-picker">{palette.map((color) => <button type="button" key={color} className={form.color === color ? 'selected' : ''} style={{ '--swatch': color }} onClick={() => setForm({ ...form, color })} aria-label={`Select color ${color}`} />)}</div></Field>
+                <Field label="Description" hint="A short note about the products in this category."><textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What belongs in this category?" /></Field>
+                <Field label="Category color"><div className="color-picker">{palette.map((color) => <button type="button" key={color} className={form.color === color ? 'selected' : ''} style={/** @type {import('react').CSSProperties} */ ({ '--swatch': color })} onClick={() => setForm({ ...form, color })} aria-label={`Select color ${color}`} />)}</div></Field>
             </form>
         </Modal>
     );
 }
 
+/** @param {{ navigate: (path: string) => void }} props */
 export default function Categories({ navigate }) {
     const { categories, products, deleteCategory } = useStore();
     const [formOpen, setFormOpen] = useState(false);
-    const [editing, setEditing] = useState(null);
-    const [deleting, setDeleting] = useState(null);
+    const [editing, setEditing] = useState(/** @type {import('../types.js').Category | null} */(null));
+    const [deleting, setDeleting] = useState(/** @type {import('../types.js').Category | null} */(null));
     const totalUnits = products.reduce((sum, product) => sum + product.stock, 0);
 
-    const openEdit = (category) => { setEditing(category); setFormOpen(true); };
+    const openEdit = (/** @type {import('../types.js').Category} */ category) => { setEditing(category); setFormOpen(true); };
     const closeForm = () => { setFormOpen(false); setEditing(null); };
 
     return (
@@ -68,7 +70,7 @@ export default function Categories({ navigate }) {
                     const low = items.filter((product) => product.active && ['low', 'out'].includes(getStockStatus(product))).length;
                     const value = items.reduce((sum, product) => sum + product.stock * product.cost, 0);
                     return (
-                        <article className="card category-card" key={category.id} style={{ '--category-color': category.color }}>
+                        <article className="card category-card" key={category.id} style={/** @type {import('react').CSSProperties} */ ({ '--category-color': category.color })}>
                             <div className="category-card-top"><span className="category-icon"><Layers size={23} /></span><div className="row-actions"><button className="icon-button small" onClick={() => openEdit(category)} aria-label={`Edit ${category.name}`}><Pencil size={16} /></button><button className="icon-button small" onClick={() => setDeleting(category)} aria-label={`Delete ${category.name}`}><Trash2 size={16} /></button></div></div>
                             <h2>{category.name}</h2><p>{category.description || 'No category description provided.'}</p>
                             <div className="category-metrics"><div><strong>{items.length}</strong><span>Products</span></div><div><strong>{units.toLocaleString()}</strong><span>Units</span></div><div><strong className={low ? 'text-warning' : ''}>{low}</strong><span>Stock alerts</span></div></div>
