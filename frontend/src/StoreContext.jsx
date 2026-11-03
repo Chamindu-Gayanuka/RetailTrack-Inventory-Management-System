@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StoreContext } from './store-context.js';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import {StoreContext} from './store-context.js';
 import {
-    demoAccounts,
     initialProfile,
     initialSettings,
+    loginAccounts,
     seedCategories,
     seedProducts,
     seedSales,
     seedTransactions,
     seedUsers,
 } from './data.js';
-import { passwordValidationError } from './utils/credentials.js';
+import {passwordValidationError} from './utils/credentials.js';
 
 /**
  * @typedef {import('./types.js').StoreValue} StoreValue
  * @typedef {import('./types.js').Session} Session
- * @typedef {import('./types.js').DemoAccount} DemoAccount
+ * @typedef {import('./types.js').AuthAccount} AuthAccount
  * @typedef {import('./types.js').Product} Product
  * @typedef {import('./types.js').Sale} Sale
  * @typedef {import('./types.js').InventoryTransaction} InventoryTransaction
@@ -28,19 +28,19 @@ const signedOutKey = 'retailtrack-signed-out';
 
 /** @type {Session} */
 const defaultSession = {
-    userId: demoAccounts[0].userId,
-    name: demoAccounts[0].name,
-    email: demoAccounts[0].email,
-    role: demoAccounts[0].role,
-    avatar: demoAccounts[0].avatar,
+    userId: loginAccounts[0].userId,
+    name: loginAccounts[0].name,
+    email: loginAccounts[0].email,
+    role: loginAccounts[0].role,
+    avatar: loginAccounts[0].avatar,
     remember: true,
 };
 
 /** @returns {[Session | null, SessionSetter]} */
 function useSessionState() {
-    const [session, setSession] = useState(/** @type {() => Session | null} */(() => {
+    const [session, setSession] = useState(/** @type {() => Session | null} */ (() => {
         try {
-            // An explicit sign-out must survive reloads instead of restoring the demo admin.
+            // An explicit sign-out must survive reloads instead of restoring the default administrator.
             if (localStorage.getItem(signedOutKey) === 'true') return null;
         } catch {
             // Continue with the available session when storage is blocked.
@@ -51,7 +51,7 @@ function useSessionState() {
                 const saved = storage.getItem('retailtrack-session');
                 if (saved) return JSON.parse(saved);
             } catch {
-                // Fall through to the default demo session.
+                // Fall through to the default local session.
             }
         }
         return defaultSession;
@@ -120,14 +120,14 @@ function withExampleProductImages(products) {
     return products.map((product) => {
         const example = exampleProducts.get(product.id);
         if (!example || product.imageRemoved) return product;
-        const isMatchingMockProduct = product.sku === example.sku && product.name === example.name;
+        const isMatchingCatalogProduct = product.sku === example.sku && product.name === example.name;
         const needsImage = !Object.prototype.hasOwnProperty.call(product, 'image') || product.image === '';
-        // Backfill catalog photos for matching mock records without replacing custom uploads.
-        return isMatchingMockProduct && needsImage ? { ...product, image: example.image } : product;
+        // Backfill catalog photos for matching seed records without replacing custom uploads.
+        return isMatchingCatalogProduct && needsImage ? {...product, image: example.image} : product;
     });
 }
 
-const mockDateKey = 'retailtrack-mock-date';
+const seedDateKey = 'retailtrack-seed-date';
 const currentDayKey = () => {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -141,13 +141,13 @@ const currentDayKey = () => {
  * @param {string} [field]
  * @returns {T[]}
  */
-function withCurrentMockDates(records, seedRecords, field = 'createdAt') {
+function withCurrentSeedDates(records, seedRecords, field = 'createdAt') {
     if (!Array.isArray(records)) return records;
     const seeds = new Map(seedRecords.map((record) => [/** @type {any} */ (record).id, record]));
     return /** @type {T[]} */ (records.map((record) => {
-        const seed = seeds.get(/** @type {any} */(record).id);
+        const seed = seeds.get(/** @type {any} */ (record).id);
         const value = seed ? /** @type {any} */ (seed)[field] : null;
-        return seed && value ? { ...record, [field]: value } : record;
+        return seed && value ? {...record, [field]: value} : record;
     }));
 }
 
@@ -157,27 +157,33 @@ function withEmailVerification(users) {
     return users.map((user) => {
         if (typeof user.emailVerified === 'boolean') return user;
         const seed = seedUsers.find((item) => item.id === user.id);
-        return { ...user, emailVerified: seed?.emailVerified ?? false };
+        return {...user, emailVerified: seed?.emailVerified ?? false};
     });
 }
 
 /** @param {{ children: ReactNode }} props */
-export function StoreProvider({ children }) {
-    let refreshMockDates = false;
-    try { refreshMockDates = localStorage.getItem(mockDateKey) !== currentDayKey(); } catch { /* Seed dates already use the current day. */ }
+export function StoreProvider({children}) {
+    let refreshSeedDates = false;
+    try {
+        refreshSeedDates = localStorage.getItem(seedDateKey) !== currentDayKey();
+    } catch { /* Seed dates already use the current day. */
+    }
     const [products, setProducts] = usePersistentState('retailtrack-products', seedProducts, withExampleProductImages);
     const [categories, setCategories] = usePersistentState('retailtrack-categories', seedCategories);
-    const [sales, setSales] = usePersistentState('retailtrack-sales', seedSales, (records) => /** @type {Sale[]} */(refreshMockDates ? withCurrentMockDates(records, seedSales) : records));
-    const [transactions, setTransactions] = usePersistentState('retailtrack-transactions', seedTransactions, (records) => /** @type {InventoryTransaction[]} */(refreshMockDates ? withCurrentMockDates(records, seedTransactions) : records));
-    const [users, setUsers] = usePersistentState('retailtrack-users', seedUsers, (records) => withEmailVerification(refreshMockDates ? withCurrentMockDates(records, seedUsers, 'lastActive') : records));
+    const [sales, setSales] = usePersistentState('retailtrack-sales', seedSales, (records) => /** @type {Sale[]} */ (refreshSeedDates ? withCurrentSeedDates(records, seedSales) : records));
+    const [transactions, setTransactions] = usePersistentState('retailtrack-transactions', seedTransactions, (records) => /** @type {InventoryTransaction[]} */ (refreshSeedDates ? withCurrentSeedDates(records, seedTransactions) : records));
+    const [users, setUsers] = usePersistentState('retailtrack-users', seedUsers, (records) => withEmailVerification(refreshSeedDates ? withCurrentSeedDates(records, seedUsers, 'lastActive') : records));
     const [profile, setProfile] = usePersistentState('retailtrack-profile', initialProfile);
     const [settings, setSettings] = usePersistentState('retailtrack-settings', initialSettings);
-    const [passwordOverrides, setPasswordOverrides] = usePersistentState('retailtrack-password-overrides', /** @type {Record<string, string>} */({}));
+    const [passwordOverrides, setPasswordOverrides] = usePersistentState('retailtrack-password-overrides', /** @type {Record<string, string>} */ ({}));
     const [session, setSession] = useSessionState();
-    const [toasts, setToasts] = useState(/** @type {ToastMessage[]} */([]));
+    const [toasts, setToasts] = useState(/** @type {ToastMessage[]} */ ([]));
 
     useEffect(() => {
-        try { localStorage.setItem(mockDateKey, currentDayKey()); } catch { /* Date refresh remains available when storage is accessible again. */ }
+        try {
+            localStorage.setItem(seedDateKey, currentDayKey());
+        } catch { /* Date refresh remains available when storage is accessible again. */
+        }
     }, []);
 
     const dismissToast = useCallback((/** @type {string} */ id) => {
@@ -187,12 +193,12 @@ export function StoreProvider({ children }) {
     /** @type {StoreValue['notify']} */
     const notify = useCallback((message, type = 'success', title) => {
         const id = `${Date.now()}-${Math.random()}`;
-        setToasts((current) => [...current.slice(-2), { id, message, type, title }]);
+        setToasts((current) => [...current.slice(-2), {id, message, type, title}]);
         window.setTimeout(() => dismissToast(id), 4200);
         return id;
     }, [dismissToast]);
 
-    const login = useCallback((/** @type {DemoAccount} */ account, /** @type {boolean} */ remember = true) => {
+    const login = useCallback((/** @type {AuthAccount} */ account, /** @type {boolean} */ remember = true) => {
         const user = users.find((item) => item.id === account.userId);
         try {
             localStorage.removeItem(signedOutKey);
@@ -220,22 +226,26 @@ export function StoreProvider({ children }) {
         setSession(null);
     }, [setSession]);
 
-    const getDemoAccount = useCallback((/** @type {string} */ userId) => {
-        const account = demoAccounts.find((item) => item.userId === userId);
+    const getAuthAccount = useCallback((/** @type {string} */ userId) => {
+        const account = loginAccounts.find((item) => item.userId === userId);
         if (!account) return null;
         const user = users.find((item) => item.id === userId);
-        return { ...account, email: user?.email || account.email, password: passwordOverrides[userId] || account.password };
+        return {
+            ...account,
+            email: user?.email || account.email,
+            password: passwordOverrides[userId] || account.password
+        };
     }, [passwordOverrides, users]);
 
     const findAccountByEmail = useCallback((/** @type {string} */ email) => {
         const normalized = email.trim().toLowerCase();
         const matchingUser = users.find((item) => item.email.toLowerCase() === normalized);
-        const account = demoAccounts.find((item) => item.userId === matchingUser?.id) || demoAccounts.find((item) => item.email.toLowerCase() === normalized);
+        const account = loginAccounts.find((item) => item.userId === matchingUser?.id) || loginAccounts.find((item) => item.email.toLowerCase() === normalized);
         if (!account) return null;
         const user = users.find((item) => item.id === account.userId);
         if (user?.active === false) return null;
-        return getDemoAccount(account.userId);
-    }, [getDemoAccount, users]);
+        return getAuthAccount(account.userId);
+    }, [getAuthAccount, users]);
 
     const authenticate = useCallback((/** @type {string} */ email, /** @type {string} */ password) => {
         const account = findAccountByEmail(email);
@@ -245,18 +255,21 @@ export function StoreProvider({ children }) {
     const resetPassword = useCallback((/** @type {string} */ email, /** @type {string} */ password) => {
         const account = findAccountByEmail(email);
         if (!account || passwordValidationError(password)) return false;
-        setPasswordOverrides((current) => ({ ...current, [account.userId]: password }));
+        setPasswordOverrides((current) => ({...current, [account.userId]: password}));
         return true;
     }, [findAccountByEmail, setPasswordOverrides]);
 
     const changePassword = useCallback((/** @type {string} */ currentPassword, /** @type {string} */ newPassword) => {
-        const account = session ? getDemoAccount(session.userId) : null;
-        if (!account || account.password !== currentPassword) return { ok: false, message: 'Your current password is incorrect.' };
+        const account = session ? getAuthAccount(session.userId) : null;
+        if (!account || account.password !== currentPassword) return {
+            ok: false,
+            message: 'Your current password is incorrect.'
+        };
         const validation = passwordValidationError(newPassword);
-        if (validation) return { ok: false, message: validation };
-        setPasswordOverrides((current) => ({ ...current, [account.userId]: newPassword }));
-        return { ok: true, message: '' };
-    }, [getDemoAccount, session, setPasswordOverrides]);
+        if (validation) return {ok: false, message: validation};
+        setPasswordOverrides((current) => ({...current, [account.userId]: newPassword}));
+        return {ok: true, message: ''};
+    }, [getAuthAccount, session, setPasswordOverrides]);
 
     const addProduct = useCallback((/** @type {any} */ data) => {
         const product = {
@@ -337,7 +350,7 @@ export function StoreProvider({ children }) {
     }, [notify, products, setProducts, setTransactions]);
 
     /** @type {(input: { customer: string, items: Array<{ productId: string, qty: number, name?: string }>, payment?: string, status?: string }) => Sale | null} */
-    const createSale = useCallback(({ customer, items, payment = 'Cash', status = 'Completed' }) => {
+    const createSale = useCallback(({customer, items, payment = 'Cash', status = 'Completed'}) => {
         if (!items.length) {
             notify('Add at least one product to the sale.', 'error');
             return null;
@@ -376,7 +389,11 @@ export function StoreProvider({ children }) {
         if (status === 'Completed') {
             setProducts((current) => current.map((product) => {
                 const sold = saleItems.find((item) => item.productId === product.id);
-                return sold ? { ...product, stock: product.stock - sold.qty, updatedAt: new Date().toISOString() } : product;
+                return sold ? {
+                    ...product,
+                    stock: product.stock - sold.qty,
+                    updatedAt: new Date().toISOString()
+                } : product;
             }));
             setTransactions((current) => [
                 ...saleItems.map((item, index) => ({
@@ -408,10 +425,14 @@ export function StoreProvider({ children }) {
                 return false;
             }
         }
-        setSales((current) => current.map((item) => item.id === saleId ? { ...item, status: 'Completed', completedAt: new Date().toISOString() } : item));
+        setSales((current) => current.map((item) => item.id === saleId ? {
+            ...item,
+            status: 'Completed',
+            completedAt: new Date().toISOString()
+        } : item));
         setProducts((current) => current.map((product) => {
             const sold = sale.items.find((item) => item.productId === product.id);
-            return sold ? { ...product, stock: product.stock - sold.qty, updatedAt: new Date().toISOString() } : product;
+            return sold ? {...product, stock: product.stock - sold.qty, updatedAt: new Date().toISOString()} : product;
         }));
         setTransactions((current) => [
             ...sale.items.map((item, index) => ({
@@ -435,20 +456,20 @@ export function StoreProvider({ children }) {
             notify('Only pending sales can be cancelled.', 'error');
             return false;
         }
-        setSales((current) => current.map((item) => item.id === saleId ? { ...item, status: 'Cancelled' } : item));
+        setSales((current) => current.map((item) => item.id === saleId ? {...item, status: 'Cancelled'} : item));
         notify(`${sale.id} cancelled. No stock was changed.`, 'info');
         return true;
     }, [notify, sales, setSales]);
 
     const addCategory = useCallback((/** @type {any} */ data) => {
-        const category = { ...data, id: `cat${Date.now()}` };
+        const category = {...data, id: `cat${Date.now()}`};
         setCategories((current) => [...current, category]);
         notify(`${category.name} category created.`);
         return category;
     }, [notify, setCategories]);
 
     const updateCategory = useCallback((/** @type {string} */ id, /** @type {any} */ data) => {
-        setCategories((current) => current.map((category) => category.id === id ? { ...category, ...data } : category));
+        setCategories((current) => current.map((category) => category.id === id ? {...category, ...data} : category));
         notify('Category updated.');
     }, [notify, setCategories]);
 
@@ -472,7 +493,7 @@ export function StoreProvider({ children }) {
             lastActive: new Date().toISOString(),
         };
         setUsers((current) => [...current, user]);
-        notify(`Invitation sent to ${user.email}.`);
+        notify(`User account for ${user.email} was created.`);
         return user;
     }, [notify, setUsers]);
 
@@ -481,53 +502,72 @@ export function StoreProvider({ children }) {
             notify('The primary administrator account cannot be deactivated.', 'error');
             return;
         }
-        setUsers((current) => current.map((user) => user.id === id ? { ...user, active: !user.active } : user));
+        setUsers((current) => current.map((user) => user.id === id ? {...user, active: !user.active} : user));
         notify('User access updated.', 'info');
     }, [notify, setUsers]);
 
     const updateProfile = useCallback((/** @type {any} */ data) => {
-        if (session?.userId === 'u1') setProfile((current) => ({ ...current, ...data, ...(data.email && data.email !== current.email ? { emailVerified: false } : {}) }));
-        setUsers((current) => current.map((user) => user.id === session?.userId ? { ...user, ...data, ...(data.email && data.email !== user.email ? { emailVerified: false } : {}) } : user));
-        setSession((current) => current ? { ...current, ...data } : current);
+        if (session?.userId === 'u1') setProfile((current) => ({...current, ...data, ...(data.email && data.email !== current.email ? {emailVerified: false} : {})}));
+        setUsers((current) => current.map((user) => user.id === session?.userId ? {...user, ...data, ...(data.email && data.email !== user.email ? {emailVerified: false} : {})} : user));
+        setSession((current) => current ? {...current, ...data} : current);
         notify('Your profile changes were saved.');
     }, [notify, session?.userId, setProfile, setSession, setUsers]);
 
     const markEmailVerified = useCallback(() => {
         if (!session) return;
-        setUsers((current) => current.map((user) => user.id === session.userId ? { ...user, emailVerified: true } : user));
-        if (session.userId === 'u1') setProfile((current) => ({ ...current, emailVerified: true }));
+        setUsers((current) => current.map((user) => user.id === session.userId ? {
+            ...user,
+            emailVerified: true
+        } : user));
+        if (session.userId === 'u1') setProfile((current) => ({...current, emailVerified: true}));
         notify('Your email address has been verified.');
     }, [notify, session, setProfile, setUsers]);
 
     const updateSettings = useCallback((/** @type {any} */ data) => {
-        setSettings((current) => ({ ...current, ...data }));
+        setSettings((current) => ({...current, ...data}));
         notify('Settings saved successfully.');
     }, [notify, setSettings]);
 
-    const resetDemo = useCallback(() => {
-        setProducts(seedProducts);
-        setCategories(seedCategories);
-        setSales(seedSales);
-        setTransactions(seedTransactions);
-        setUsers(seedUsers);
-        setProfile(initialProfile);
-        setSettings(initialSettings);
-        setPasswordOverrides({});
-        notify('Demo data and passwords have been restored.', 'info');
-    }, [notify, setCategories, setPasswordOverrides, setProducts, setProfile, setSales, setSettings, setTransactions, setUsers]);
-
-    const value = useMemo(() => /** @type {StoreValue} */({
-        products, categories, sales, transactions, users, profile, settings, session: /** @type {Session} */ (session), toasts,
-        dismissToast, notify, login, logout, getDemoAccount, findAccountByEmail, authenticate, resetPassword, changePassword,
-        addProduct, updateProduct, toggleProduct, restock,
-        createSale, completeSale, cancelSale, addCategory, updateCategory, deleteCategory,
-        addUser, toggleUser, updateProfile, markEmailVerified, updateSettings, resetDemo,
+    const value = useMemo(() => /** @type {StoreValue} */ ({
+        products,
+        categories,
+        sales,
+        transactions,
+        users,
+        profile,
+        settings,
+        session: /** @type {Session} */ (session),
+        toasts,
+        dismissToast,
+        notify,
+        login,
+        logout,
+        getAuthAccount,
+        findAccountByEmail,
+        authenticate,
+        resetPassword,
+        changePassword,
+        addProduct,
+        updateProduct,
+        toggleProduct,
+        restock,
+        createSale,
+        completeSale,
+        cancelSale,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        addUser,
+        toggleUser,
+        updateProfile,
+        markEmailVerified,
+        updateSettings,
     }), [
         products, categories, sales, transactions, users, profile, settings, session, toasts,
-        dismissToast, notify, login, logout, getDemoAccount, findAccountByEmail, authenticate, resetPassword, changePassword,
+        dismissToast, notify, login, logout, getAuthAccount, findAccountByEmail, authenticate, resetPassword, changePassword,
         addProduct, updateProduct, toggleProduct, restock,
         createSale, completeSale, cancelSale, addCategory, updateCategory, deleteCategory,
-        addUser, toggleUser, updateProfile, markEmailVerified, updateSettings, resetDemo,
+        addUser, toggleUser, updateProfile, markEmailVerified, updateSettings,
     ]);
 
     return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

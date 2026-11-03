@@ -5,14 +5,14 @@
  * @typedef {import('./types.js').SaleItem} SaleItem
  * @typedef {import('./types.js').InventoryTransaction} InventoryTransaction
  * @typedef {import('./types.js').UserAccount} UserAccount
- * @typedef {import('./types.js').DemoAccount} DemoAccount
+ * @typedef {import('./types.js').AuthAccount} AuthAccount
  * @typedef {import('./types.js').Profile} Profile
  * @typedef {import('./types.js').StoreSettings} StoreSettings
  * @typedef {[string, string, string, string, number, number, number, number]} ProductRow
  */
 
 /** @param {number} value */
-export const currency = (value) => `Rs. ${Number(value || 0).toLocaleString('en-LK', { maximumFractionDigits: 0 })}`;
+export const currency = (value) => `Rs. ${Number(value || 0).toLocaleString('en-LK', {maximumFractionDigits: 0})}`;
 /** @param {number} value */
 export const number = (value) => Number(value || 0).toLocaleString('en-LK');
 
@@ -27,7 +27,7 @@ export const dateLabel = (value, withTime = false) => {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-        ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+        ...(withTime ? {hour: '2-digit', minute: '2-digit'} : {}),
     });
 };
 
@@ -62,10 +62,30 @@ export const hoursAgo = (hours) => new Date(Date.now() - hours * 60 * 60 * 1000)
 
 /** @type {Category[]} */
 export const seedCategories = [
-    { id: 'plastic', name: 'Plastic Items', description: 'Buckets, chairs, storage and everyday plastic goods.', color: '#6574e8' },
-    { id: 'school', name: 'School Supplies', description: 'Books, stationery and learning essentials.', color: '#2f9d8f' },
-    { id: 'household', name: 'Household Essentials', description: 'Daily household and cleaning products.', color: '#e5a43a' },
-    { id: 'paper', name: 'Paper & Packaging', description: 'Paper bundles, wrapping and packing supplies.', color: '#de6c75' },
+    {
+        id: 'plastic',
+        name: 'Plastic Items',
+        description: 'Buckets, chairs, storage and everyday plastic goods.',
+        color: '#6574e8'
+    },
+    {
+        id: 'school',
+        name: 'School Supplies',
+        description: 'Books, stationery and learning essentials.',
+        color: '#2f9d8f'
+    },
+    {
+        id: 'household',
+        name: 'Household Essentials',
+        description: 'Daily household and cleaning products.',
+        color: '#e5a43a'
+    },
+    {
+        id: 'paper',
+        name: 'Paper & Packaging',
+        description: 'Paper bundles, wrapping and packing supplies.',
+        color: '#de6c75'
+    },
 ];
 
 /** @type {Record<string, string>} */
@@ -187,7 +207,7 @@ const productById = /** @type {Record<string, Product>} */ (Object.fromEntries(s
 const makeSale = (numericId, customer, createdAt, itemRows, status = 'Completed', payment = 'Cash') => {
     const items = itemRows.map(([productId, qty]) => {
         const product = productById[productId];
-        return { productId, name: product.name, sku: product.sku, qty, price: product.price };
+        return {productId, name: product.name, sku: product.sku, qty, price: product.price};
     });
     return {
         id: `SALE-${numericId}`,
@@ -220,21 +240,114 @@ export const seedSales = [
 
 /** @type {InventoryTransaction[]} */
 export const seedTransactions = [
-    { id: 'tx1', type: 'outbound', title: 'Sale #SALE-1032', productId: 'p5', quantity: 4, createdAt: hoursAgo(2), note: 'Sale completed' },
-    { id: 'tx2', type: 'inbound', title: 'Restock A4 Paper Bundle', productId: 'p12', quantity: 30, createdAt: hoursAgo(3), note: 'Supplier delivery' },
-    { id: 'tx3', type: 'outbound', title: 'Sale #SALE-1031', productId: 'p2', quantity: 4, createdAt: hoursAgo(4), note: 'Sale completed' },
-    { id: 'tx4', type: 'inbound', title: 'Restock School Books', productId: 'p13', quantity: 50, createdAt: daysAgo(1, 15, 20), note: 'Weekly stock order' },
-    { id: 'tx5', type: 'outbound', title: 'Sale #SALE-1028', productId: 'p6', quantity: 1, createdAt: daysAgo(1, 14, 30), note: 'Sale completed' },
-    { id: 'tx6', type: 'inbound', title: 'Restock Plastic Buckets', productId: 'p1', quantity: 24, createdAt: daysAgo(2, 9, 10), note: 'Supplier delivery' },
+    {
+        id: 'tx1',
+        type: 'outbound',
+        title: 'Sale #SALE-1032',
+        productId: 'p5',
+        quantity: 4,
+        createdAt: hoursAgo(2),
+        note: 'Sale completed'
+    },
+    {
+        id: 'tx2',
+        type: 'inbound',
+        title: 'Restock A4 Paper Bundle',
+        productId: 'p12',
+        quantity: 30,
+        createdAt: hoursAgo(3),
+        note: 'Supplier delivery'
+    },
+    {
+        id: 'tx3',
+        type: 'outbound',
+        title: 'Sale #SALE-1031',
+        productId: 'p2',
+        quantity: 4,
+        createdAt: hoursAgo(4),
+        note: 'Sale completed'
+    },
+    {
+        id: 'tx4',
+        type: 'inbound',
+        title: 'Restock School Books',
+        productId: 'p13',
+        quantity: 50,
+        createdAt: daysAgo(1, 15, 20),
+        note: 'Weekly stock order'
+    },
+    {
+        id: 'tx5',
+        type: 'outbound',
+        title: 'Sale #SALE-1028',
+        productId: 'p6',
+        quantity: 1,
+        createdAt: daysAgo(1, 14, 30),
+        note: 'Sale completed'
+    },
+    {
+        id: 'tx6',
+        type: 'inbound',
+        title: 'Restock Plastic Buckets',
+        productId: 'p1',
+        quantity: 24,
+        createdAt: daysAgo(2, 9, 10),
+        note: 'Supplier delivery'
+    },
 ];
 
 /** @type {UserAccount[]} */
 export const seedUsers = [
-    { id: 'u1', name: 'Chamindu Gayanuka', email: 'chamindu@apekade.lk', phone: '+94 76 294 4551', role: 'Administrator', active: true, emailVerified: false, lastActive: hoursAgo(1) },
-    { id: 'u2', name: 'Sandun Madushan', email: 'sandun@apekade.lk', phone: '+94 71 438 2094', role: 'Inventory Staff', active: true, emailVerified: true, lastActive: hoursAgo(2) },
-    { id: 'u3', name: 'Chathuranga Sampath', email: 'chathuranga@apekade.lk', phone: '+94 77 890 1245', role: 'Cashier', active: true, emailVerified: true, lastActive: daysAgo(1, 17, 30) },
-    { id: 'u4', name: 'Dilwan Thennakoon', email: 'dilwan@apekade.lk', phone: '+94 75 622 8103', role: 'Inventory Staff', active: true, emailVerified: false, lastActive: daysAgo(2, 14, 5) },
-    { id: 'u5', name: 'Nimal Perera', email: 'nimal@apekade.lk', phone: '+94 70 552 7642', role: 'Cashier', active: false, emailVerified: false, lastActive: daysAgo(18, 9, 20) },
+    {
+        id: 'u1',
+        name: 'Chamindu Gayanuka',
+        email: 'chamindu@apekade.lk',
+        phone: '+94 76 294 4551',
+        role: 'Administrator',
+        active: true,
+        emailVerified: false,
+        lastActive: hoursAgo(1)
+    },
+    {
+        id: 'u2',
+        name: 'Sandun Madushan',
+        email: 'sandun@apekade.lk',
+        phone: '+94 71 438 2094',
+        role: 'Inventory Staff',
+        active: true,
+        emailVerified: true,
+        lastActive: hoursAgo(2)
+    },
+    {
+        id: 'u3',
+        name: 'Chathuranga Sampath',
+        email: 'chathuranga@apekade.lk',
+        phone: '+94 77 890 1245',
+        role: 'Cashier',
+        active: true,
+        emailVerified: true,
+        lastActive: daysAgo(1, 17, 30)
+    },
+    {
+        id: 'u4',
+        name: 'Dilwan Thennakoon',
+        email: 'dilwan@apekade.lk',
+        phone: '+94 75 622 8103',
+        role: 'Inventory Staff',
+        active: true,
+        emailVerified: false,
+        lastActive: daysAgo(2, 14, 5)
+    },
+    {
+        id: 'u5',
+        name: 'Nimal Perera',
+        email: 'nimal@apekade.lk',
+        phone: '+94 70 552 7642',
+        role: 'Cashier',
+        active: false,
+        emailVerified: false,
+        lastActive: daysAgo(18, 9, 20)
+    },
 ];
 
 /** @type {Profile} */
@@ -247,11 +360,32 @@ export const initialProfile = {
     emailVerified: false,
 };
 
-/** @type {DemoAccount[]} */
-export const demoAccounts = [
-    { userId: 'u1', name: 'Chamindu Gayanuka', email: 'chamindu@apekade.lk', password: 'demo1234', role: 'Administrator', avatar: '/chamindu-avatar.png' },
-    { userId: 'u2', name: 'Sandun Madushan', email: 'sandun@apekade.lk', password: 'demo1234', role: 'Inventory Staff', avatar: null },
-    { userId: 'u3', name: 'Chathuranga Sampath', email: 'chathuranga@apekade.lk', password: 'demo1234', role: 'Cashier', avatar: null },
+/** @type {AuthAccount[]} */
+export const loginAccounts = [
+    {
+        userId: 'u1',
+        name: 'Chamindu Gayanuka',
+        email: 'chamindu@apekade.lk',
+        password: 'Retail2026',
+        role: 'Administrator',
+        avatar: '/chamindu-avatar.png'
+    },
+    {
+        userId: 'u2',
+        name: 'Sandun Madushan',
+        email: 'sandun@apekade.lk',
+        password: 'Retail2026',
+        role: 'Inventory Staff',
+        avatar: null
+    },
+    {
+        userId: 'u3',
+        name: 'Chathuranga Sampath',
+        email: 'chathuranga@apekade.lk',
+        password: 'Retail2026',
+        role: 'Cashier',
+        avatar: null
+    },
 ];
 
 /** @type {Record<string, string[]>} */
@@ -275,18 +409,18 @@ export const initialSettings = {
 };
 
 export const salesWeek = [
-    { label: 'Mon', value: 18500, orders: 12 },
-    { label: 'Tue', value: 21800, orders: 15 },
-    { label: 'Wed', value: 19600, orders: 13 },
-    { label: 'Thu', value: 24800, orders: 18 },
-    { label: 'Fri', value: 21500, orders: 16 },
-    { label: 'Sat', value: 28700, orders: 22 },
-    { label: 'Sun', value: 26450, orders: 19 },
+    {label: 'Mon', value: 18500, orders: 12},
+    {label: 'Tue', value: 21800, orders: 15},
+    {label: 'Wed', value: 19600, orders: 13},
+    {label: 'Thu', value: 24800, orders: 18},
+    {label: 'Fri', value: 21500, orders: 16},
+    {label: 'Sat', value: 28700, orders: 22},
+    {label: 'Sun', value: 26450, orders: 19},
 ];
 
 export const salesMonth = [
-    { label: 'Week 1', value: 112400, orders: 84 },
-    { label: 'Week 2', value: 126800, orders: 91 },
-    { label: 'Week 3', value: 118200, orders: 87 },
-    { label: 'Week 4', value: 141600, orders: 103 },
+    {label: 'Week 1', value: 112400, orders: 84},
+    {label: 'Week 2', value: 126800, orders: 91},
+    {label: 'Week 3', value: 118200, orders: 87},
+    {label: 'Week 4', value: 141600, orders: 103},
 ];

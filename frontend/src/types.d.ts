@@ -39,6 +39,7 @@ export interface Product {
     image?: string;
     createdAt?: string;
     updatedAt?: string;
+
     [key: string]: unknown;
 }
 
@@ -47,6 +48,7 @@ export interface Category {
     name: string;
     description?: string;
     color?: string;
+
     [key: string]: unknown;
 }
 
@@ -93,7 +95,7 @@ export interface UserAccount {
     avatar?: string | null;
 }
 
-export interface DemoAccount {
+export interface AuthAccount {
     userId: string;
     name: string;
     email: string;
@@ -118,6 +120,7 @@ export interface Profile {
     role: Role;
     avatar?: string | null;
     emailVerified?: boolean;
+
     [key: string]: unknown;
 }
 
@@ -155,7 +158,8 @@ export interface StoreValue {
     session: Session;
     toasts: ToastMessage[];
     notify: (message: string, type?: string, title?: string) => string;
-    login: (account: DemoAccount, remember?: boolean) => void;
+    login: (account: AuthAccount, remember?: boolean) => void;
     logout: () => void;
+
     [key: string]: any;
 }
