@@ -2,19 +2,29 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ImagePlus, LoaderCircle, Package, Trash2, Upload } from 'lucide-react';
 import { Field } from './UI.jsx';
 
+/** @typedef {import('../types.js').Product} Product */
+
 const acceptedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 const maximumFileSize = 8 * 1024 * 1024;
 const maximumImageDimension = 1000;
 
+/**
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
 function readFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
+        reader.onload = () => resolve(/** @type {string} */(reader.result));
         reader.onerror = () => reject(new Error('The selected image could not be read.'));
         reader.readAsDataURL(file);
     });
 }
 
+/**
+ * @param {string} source
+ * @returns {Promise<HTMLImageElement>}
+ */
 function loadImage(source) {
     return new Promise((resolve, reject) => {
         const image = new Image();
@@ -24,6 +34,10 @@ function loadImage(source) {
     });
 }
 
+/**
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
 async function prepareImage(file) {
     if (!acceptedTypes.includes(file.type)) throw new Error('Choose a JPG, PNG or WebP image.');
     if (file.size > maximumFileSize) throw new Error('Choose an image smaller than 8 MB.');
@@ -40,7 +54,8 @@ async function prepareImage(file) {
     return canvas.toDataURL('image/webp', 0.82);
 }
 
-export default function ProductImage({ product, size = 'medium', className = '' }) {
+/** @param {{ product?: Product | null, size?: string, className?: string }} props */
+export default function ProductImage({ product = null, size = 'medium', className = '' }) {
     const [failed, setFailed] = useState(false);
     const source = product?.image || '';
 
@@ -51,19 +66,33 @@ export default function ProductImage({ product, size = 'medium', className = '' 
             {source && !failed ? (
                 <img src={source} alt="" loading="lazy" onError={() => setFailed(true)} />
             ) : (
-                <Package size={size === 'large' ? 30 : 19} aria-hidden="true" />
+                <Package size={size === 'large' ? 30 : size === 'tiny' ? 15 : 19} aria-hidden="true" />
             )}
         </span>
     );
 }
 
+/** @param {{ product?: Product | null, name?: string, sku?: string | false, size?: string, className?: string }} props */
+export function ProductCell({ product = null, name = '', sku = '', size = 'small', className = '' }) {
+    return (
+        <div className={`product-cell ${className}`.trim()}>
+            <ProductImage product={product} size={size} />
+            <div className="primary-cell">
+                <strong>{name || product?.name || 'Removed product'}</strong>
+                {sku !== false && <span className="monospace">{sku || product?.sku || '-'}</span>}
+            </div>
+        </div>
+    );
+}
+
+/** @param {{ value: string, onChange: (value: string) => void }} props */
 export function ProductImageUpload({ value, onChange }) {
     const inputId = useId();
-    const inputRef = useRef(null);
+    const inputRef = useRef(/** @type {HTMLInputElement | null} */(null));
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
 
-    const selectImage = async (event) => {
+    const selectImage = async (/** @type {import('react').ChangeEvent<HTMLInputElement>} */ event) => {
         const file = event.target.files?.[0];
         event.target.value = '';
         if (!file) return;
@@ -73,7 +102,7 @@ export function ProductImageUpload({ value, onChange }) {
             const image = await prepareImage(file);
             onChange(image);
         } catch (imageError) {
-            setError(imageError.message || 'The image could not be added.');
+            setError(imageError instanceof Error ? imageError.message : 'The image could not be added.');
         } finally {
             setProcessing(false);
         }

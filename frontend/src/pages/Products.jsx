@@ -14,10 +14,9 @@ import {
     Search,
     SlidersHorizontal,
 } from 'lucide-react';
-import { useStore } from '../StoreContext.jsx';
+import { useStore } from '../store-context.js';
 import { currency, dateLabel, getStockStatus, number } from '../data.js';
 import {
-    CardHeader,
     EmptyState,
     Field,
     Modal,
@@ -30,7 +29,15 @@ import {
 } from '../components/UI.jsx';
 import RestockModal from '../components/RestockModal.jsx';
 import ProductImage, { ProductImageUpload } from '../components/ProductImage.jsx';
+import useUrlPagination from '../utils/useUrlPagination.js';
+import PrettySelect from '../components/PrettySelect.jsx';
 
+/**
+ * @typedef {{ name: string, sku: string, categoryId: string, price: string | number, cost: string | number, minStock: string | number, stock: string | number, active: boolean, image: string, imageRemoved?: boolean }} ProductFormState
+ * @typedef {Partial<Record<keyof ProductFormState, string>>} ProductFormErrors
+ */
+
+/** @param {{ product?: import('../types.js').Product, category?: import('../types.js').Category, onClose: () => void, onEdit: () => void, onRestock: () => void, canManage: boolean, canRestock: boolean }} props */
 function ProductDetail({ product, category, onClose, onEdit, onRestock, canManage, canRestock }) {
     if (!product) return null;
     const status = getStockStatus(product);
@@ -67,6 +74,7 @@ function ProductDetail({ product, category, onClose, onEdit, onRestock, canManag
     );
 }
 
+/** @param {{ navigate: (path: string, options?: { replace?: boolean }) => void, viewId?: string, initialCategory?: string }} props */
 export default function Products({ navigate, viewId, initialCategory }) {
     const { products, categories, toggleProduct, session } = useStore();
     const canManage = session.role === 'Administrator';
@@ -75,14 +83,12 @@ export default function Products({ navigate, viewId, initialCategory }) {
     const [category, setCategory] = useState(initialCategory || 'all');
     const [status, setStatus] = useState('all');
     const [sort, setSort] = useState('name');
-    const [page, setPage] = useState(1);
     const [selectedId, setSelectedId] = useState(viewId || null);
-    const [restockId, setRestockId] = useState(null);
+    const [restockId, setRestockId] = useState(/** @type {string | null} */(null));
     const pageSize = 8;
 
-    useEffect(() => { if (viewId) setSelectedId(viewId); }, [viewId]);
+    useEffect(() => { setSelectedId(viewId || null); }, [viewId]);
     useEffect(() => { setCategory(initialCategory || 'all'); }, [initialCategory]);
-    useEffect(() => setPage(1), [search, category, status, sort]);
 
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase();
@@ -102,12 +108,13 @@ export default function Products({ navigate, viewId, initialCategory }) {
     }, [products, search, category, status, sort]);
 
     const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const [page, setPage] = useUrlPagination(navigate, pageCount, JSON.stringify([search, category, status, sort, initialCategory]));
     const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
     const selected = products.find((product) => product.id === selectedId);
     const selectedCategory = categories.find((item) => item.id === selected?.categoryId);
-    const categoryName = (id) => categories.find((item) => item.id === id)?.name || 'Uncategorized';
+    const categoryName = (/** @type {string} */ id) => categories.find((item) => item.id === id)?.name || 'Uncategorized';
     const reset = () => { setSearch(''); setCategory('all'); setStatus('all'); setSort('name'); };
-    const closeDetail = () => { setSelectedId(null); if (viewId) navigate('products'); };
+    const closeDetail = () => { setSelectedId(null); if (viewId) navigate('products', { replace: true }); };
 
     return (
         <div>
@@ -123,9 +130,9 @@ export default function Products({ navigate, viewId, initialCategory }) {
             </section>
             <div className="filter-bar">
                 <div className="filter-search"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name / SKU" aria-label="Search products" />{search && <button onClick={() => setSearch('')} aria-label="Clear search">×</button>}</div>
-                <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="all">All Categories</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-                <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by stock status"><option value="all">All Stock Status</option><option value="in">In Stock</option><option value="low">Low Stock</option><option value="out">Out of Stock</option><option value="inactive">Inactive</option></select>
-                <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort products"><option value="name">Sort: Name A-Z</option><option value="stock-low">Stock: Low to High</option><option value="stock-high">Stock: High to Low</option><option value="price">Price: High to Low</option></select>
+                <PrettySelect value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by category"><option value="all">All Categories</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</PrettySelect>
+                <PrettySelect value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by stock status"><option value="all">All Stock Status</option><option value="in">In Stock</option><option value="low">Low Stock</option><option value="out">Out of Stock</option><option value="inactive">Inactive</option></PrettySelect>
+                <PrettySelect value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort products"><option value="name">Sort: Name A-Z</option><option value="stock-low">Stock: Low to High</option><option value="stock-high">Stock: High to Low</option><option value="price">Price: High to Low</option></PrettySelect>
                 <button className="button button-ghost reset-button" onClick={reset}><RotateCcw size={16} />Reset</button>
             </div>
 
@@ -133,29 +140,29 @@ export default function Products({ navigate, viewId, initialCategory }) {
                 <div className="table-card-top"><div><SlidersHorizontal size={16} /><span>{filtered.length} products found</span></div><span>Stock levels update automatically after every sale</span></div>
                 {visible.length ? <div className="table-wrap"><table className="data-table product-table"><thead><tr><th>SKU</th><th>Product Name</th><th>Category</th><th>Selling Price</th><th>Current Stock</th><th>Minimum Stock</th><th>Stock</th><th className="actions-column">Actions</th></tr></thead><tbody>
                     {visible.map((product) => <tr key={product.id} className={!product.active ? 'inactive-row' : ''}>
-                        <td className="monospace muted">{product.sku}</td>
-                        <td><button className="product-table-name" onClick={() => setSelectedId(product.id)}><ProductImage product={product} size="small" /><span>{product.name}</span></button></td>
-                        <td className="muted">{categoryName(product.categoryId)}</td>
-                        <td><strong>{currency(product.price)}</strong></td>
-                        <td><strong className={getStockStatus(product) === 'out' ? 'text-danger' : ''}>{number(product.stock)}</strong></td>
-                        <td className="muted">{number(product.minStock)}</td>
-                        <td><StatusBadge status={getStockStatus(product)} /></td>
-                        <td><div className="row-actions">
+                        <td data-label="SKU" className="monospace muted">{product.sku}</td>
+                        <td data-label="Product" data-wide="true"><button className="product-table-name" onClick={() => setSelectedId(product.id)}><ProductImage product={product} size="small" /><span>{product.name}</span></button></td>
+                        <td data-label="Category" className="muted">{categoryName(product.categoryId)}</td>
+                        <td data-label="Selling Price"><strong>{currency(product.price)}</strong></td>
+                        <td data-label="Current Stock"><strong className={getStockStatus(product) === 'out' ? 'text-danger' : ''}>{number(product.stock)}</strong></td>
+                        <td data-label="Minimum Stock" className="muted">{number(product.minStock)}</td>
+                        <td data-label="Stock Status"><StatusBadge status={getStockStatus(product)} /></td>
+                        <td data-label="Actions"><div className="row-actions">
                             <button className="icon-button small" onClick={() => setSelectedId(product.id)} title="View product" aria-label={`View ${product.name}`}><Eye size={17} /></button>
                             {canManage && <button className="icon-button small" onClick={() => navigate(`products/edit/${product.id}`)} title="Edit product" aria-label={`Edit ${product.name}`}><Pencil size={16} /></button>}
                             {canManage && <button className={`icon-button small ${product.active ? '' : 'power-inactive'}`} onClick={() => toggleProduct(product.id)} title={product.active ? 'Deactivate product' : 'Activate product'} aria-label={product.active ? `Deactivate ${product.name}` : `Activate ${product.name}`}><Power size={17} /></button>}
                         </div></td>
                     </tr>)}
                 </tbody></table></div> : <EmptyState title="No products match" description="Adjust your filters or add a new product to the catalog." action={<button className="button button-secondary" onClick={reset}>Clear filters</button>} />}
-                <Pagination page={Math.min(page, pageCount)} pageCount={pageCount} onPageChange={setPage} total={filtered.length} pageSize={pageSize} />
+                <Pagination page={page} pageCount={pageCount} onPageChange={setPage} total={filtered.length} pageSize={pageSize} />
             </section>
 
             <ProductDetail
                 product={selected}
                 category={selectedCategory}
                 onClose={closeDetail}
-                onEdit={() => navigate(`products/edit/${selected.id}`)}
-                onRestock={() => setRestockId(selected.id)}
+                onEdit={() => { if (selected) navigate(`products/edit/${selected.id}`); }}
+                onRestock={() => { if (selected) setRestockId(selected.id); }}
                 canManage={canManage}
                 canRestock={canRestock}
             />
@@ -164,18 +171,21 @@ export default function Products({ navigate, viewId, initialCategory }) {
     );
 }
 
+/** @type {ProductFormState} */
 const blankProduct = {
-    name: '', sku: '', categoryId: '', price: '', cost: '', minStock: 8, stock: '', active: true, image: '',
+    name: '', sku: '', categoryId: '', price: '', cost: '', minStock: 8, stock: '', active: true, image: '', imageRemoved: false,
 };
 
+/** @param {{ navigate: (path: string) => void, productId?: string }} props */
 export function ProductForm({ navigate, productId }) {
     const { products, categories, addProduct, updateProduct } = useStore();
     const existing = products.find((product) => product.id === productId);
-    const [form, setForm] = useState(() => existing ? { ...existing } : blankProduct);
-    const [errors, setErrors] = useState({});
-    const set = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setErrors((current) => ({ ...current, [key]: '' })); };
+    const [form, setForm] = useState(() => /** @type {ProductFormState} */(existing ? { ...existing } : blankProduct));
+    const [errors, setErrors] = useState(/** @type {ProductFormErrors} */({}));
+    const set = (/** @type {keyof ProductFormState} */ key, /** @type {string | number | boolean} */ value) => { setForm((current) => /** @type {ProductFormState} */({ ...current, [key]: value })); setErrors((current) => ({ ...current, [key]: '' })); };
 
     const validate = () => {
+        /** @type {ProductFormErrors} */
         const next = {};
         if (!form.name.trim()) next.name = 'Product name is required.';
         if (!form.sku.trim()) next.sku = 'SKU / product code is required.';
@@ -189,7 +199,7 @@ export function ProductForm({ navigate, productId }) {
         return Object.keys(next).length === 0;
     };
 
-    const submit = (event) => {
+    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!validate()) return;
         const payload = { ...form, sku: form.sku.trim().toUpperCase(), name: form.name.trim(), stock: existing ? existing.stock : Number(form.stock || 0) };
@@ -214,8 +224,8 @@ export function ProductForm({ navigate, productId }) {
                         <div className="form-section-heading"><span>01</span><div><h2>Identity & Classification</h2><p>Basic details used to identify this product.</p></div></div>
                         <Field label="Product Name" required error={errors.name}><input value={form.name} onChange={(event) => set('name', event.target.value)} placeholder="e.g. Plastic Lunch Box" /></Field>
                         <Field label="SKU / Product Code" required error={errors.sku} hint="Use a unique code such as PL-010."><input className="monospace" value={form.sku} onChange={(event) => set('sku', event.target.value)} placeholder="e.g. PL-010" /></Field>
-                        <Field label="Category" required error={errors.categoryId}><select value={form.categoryId} onChange={(event) => set('categoryId', event.target.value)}><option value="">Select a category</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></Field>
-                        <ProductImageUpload value={form.image || ''} onChange={(image) => set('image', image)} />
+                        <Field label="Category" required error={errors.categoryId}><PrettySelect value={form.categoryId} onChange={(event) => set('categoryId', event.target.value)}><option value="">Select a category</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</PrettySelect></Field>
+                        <ProductImageUpload value={form.image || ''} onChange={(image) => { set('image', image); set('imageRemoved', !image); }} />
                         <div className="active-toggle-field"><Toggle checked={form.active} onChange={(value) => set('active', value)} label="Set product as Active" description="Active products can be selected when recording a sale." /></div>
                     </section>
                     <section className="form-section">
@@ -226,7 +236,7 @@ export function ProductForm({ navigate, productId }) {
                         </div>
                         <Field label="Minimum Stock Level" required error={errors.minStock} hint="Triggers a low-stock alert when quantity reaches this value."><input type="number" min="0" step="1" value={form.minStock} onChange={(event) => set('minStock', event.target.value)} /></Field>
                         {existing ? <Field label="Current Available Stock" hint="Use Add Stock or a completed sale to change inventory quantity."><div className="readonly-input"><strong>{existing.stock} units</strong><StatusBadge status={getStockStatus(existing)} /></div></Field> : <Field label="Initial Available Stock" error={errors.stock} hint="Leave empty to initialize with 0 units."><input type="number" min="0" step="1" value={form.stock} onChange={(event) => set('stock', event.target.value)} placeholder="Enter starting quantity" /></Field>}
-                        {form.price > 0 && form.cost >= 0 && <div className="margin-preview"><span>Estimated gross margin</span><strong>{Math.max(0, Math.round(((Number(form.price) - Number(form.cost || 0)) / Number(form.price)) * 100))}%</strong><small>{currency(Number(form.price) - Number(form.cost || 0))} per unit</small></div>}
+                        {Number(form.price) > 0 && Number(form.cost) >= 0 && <div className="margin-preview"><span>Estimated gross margin</span><strong>{Math.max(0, Math.round(((Number(form.price) - Number(form.cost || 0)) / Number(form.price)) * 100))}%</strong><small>{currency(Number(form.price) - Number(form.cost || 0))} per unit</small></div>}
                     </section>
                 </div>
                 <div className="form-card-footer"><span>All changes are saved to this browser’s demo database.</span><div><button type="button" className="button button-secondary" onClick={() => navigate('products')}>Cancel</button><button type="submit" className="button button-primary">{existing ? 'Save Changes' : 'Save Product'}<ChevronRight size={16} /></button></div></div>

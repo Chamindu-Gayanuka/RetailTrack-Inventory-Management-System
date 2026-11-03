@@ -1,0 +1,19 @@
+/**
+ * Download rows as a CSV file.
+ * @param {string} filename
+ * @param {Array<Array<string | number | boolean | null | undefined>>} rows
+ */
+export function downloadCsv(filename, rows) {
+    /** @param {string | number | boolean | null | undefined} value */
+    const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csv = rows.map((row) => row.map(escape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+}
