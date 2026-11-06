@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import {useStore} from '../store-context.js';
 import {downloadCsv} from '../utils/downloadCsv.js';
+import {downloadPurchaseOrderPdf, downloadReportPdf} from '../utils/pdf.js';
 import {currency, dateLabel, getStockStatus, number, relativeTime} from '../data.js';
 import {
     CardHeader,
@@ -35,7 +36,7 @@ import PrettySelect from '../components/PrettySelect.jsx';
 
 /** @param {{ product: import('../types.js').Product | null, onClose: () => void }} props */
 function PurchaseOrderModal({product, onClose}) {
-    const {notify} = useStore();
+    const {notify, createPurchaseOrder, settings} = useStore();
     const [quantity, setQuantity] = useState(1);
     const [supplier, setSupplier] = useState('');
     useEffect(() => {
@@ -51,18 +52,10 @@ function PurchaseOrderModal({product, onClose}) {
             notify('Purchase order quantity must be at least 1 unit.', 'error');
             return;
         }
-        const orderId = `PO-${String(Date.now()).slice(-6)}`;
-        downloadCsv(`${orderId}-${product.sku}.csv`, [
-            ['Purchase Order', orderId],
-            ['Created', dateLabel(new Date(), true)],
-            ['Supplier', supplier.trim() || 'To be assigned'],
-            ['SKU', product.sku],
-            ['Product', product.name],
-            ['Current Stock', product.stock],
-            ['Minimum Stock', product.minStock],
-            ['Order Quantity', Number(quantity)],
-        ]);
-        notify(`${orderId} created and downloaded for ${product.name}.`);
+        const order = createPurchaseOrder({productId: product.id, quantity: Number(quantity), supplier});
+        if (!order) return;
+        downloadPurchaseOrderPdf(order, settings);
+        notify(`${order.id} downloaded as PDF.`);
         onClose();
     };
     return (
@@ -70,7 +63,7 @@ function PurchaseOrderModal({product, onClose}) {
                subtitle={`Prepare a supplier order for ${product.name}.`} footer={<>
             <button className="button button-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" form="purchase-order-form" className="button button-primary"><Download size={16}/>Create
-                & Download
+                & Download PDF
             </button>
         </>}>
             <form id="purchase-order-form" className="form-stack" onSubmit={submit}>
@@ -89,7 +82,7 @@ function PurchaseOrderModal({product, onClose}) {
 
 /** @param {{ navigate: (path: string) => void, section?: string }} props */
 export default function Inventory({navigate, section = 'current'}) {
-    const {products, categories, transactions, notify} = useStore();
+    const {products, categories, transactions, notify, settings} = useStore();
     const [tab, setTab] = useState(section);
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('all');
@@ -139,6 +132,18 @@ export default function Inventory({navigate, section = 'current'}) {
         ]);
         notify('Inventory report exported as CSV.');
     };
+    const exportInventoryPdf = () => {
+        downloadReportPdf({
+            filename: 'retailtrack-inventory.pdf',
+            title: 'Inventory Report',
+            settings,
+            subtitle: `Generated ${dateLabel(new Date(), true)}`,
+            summary: [['Products', filtered.length], ['Stock value at cost', currency(filtered.reduce((sum, product) => sum + product.stock * product.cost, 0))]],
+            head: ['SKU', 'Product', 'Category', 'Stock', 'Minimum', 'Cost price', 'Stock value', 'Status'],
+            body: filtered.map((product) => [product.sku, product.name, categoryName(product.categoryId), product.stock, product.minStock, currency(product.cost), currency(product.stock * product.cost), getStockStatus(product)])
+        });
+        notify('Inventory report exported as PDF.');
+    };
 
     return (
         <div>
@@ -146,7 +151,9 @@ export default function Inventory({navigate, section = 'current'}) {
                 title={tab === 'alerts' ? 'Stock Alerts' : tab === 'history' ? 'Inventory Movements' : 'Inventory'}
                 description={tab === 'alerts' ? 'Real-time inventory monitoring for Ape Kade' : tab === 'history' ? 'A complete audit trail of inbound and outbound stock.' : 'Monitor stock levels, record additions and keep every unit accounted for.'}
                 actions={<>
-                    <button className="button button-secondary" onClick={exportInventory}><Download size={16}/>Export
+                    <button className="button button-secondary" onClick={exportInventory}><Download size={16}/>CSV
+                    </button>
+                    <button className="button button-secondary" onClick={exportInventoryPdf}><Download size={16}/>PDF
                     </button>
                     <button className="button button-primary" onClick={() => openRestock()}><PackagePlus size={17}/>Add
                         Stock

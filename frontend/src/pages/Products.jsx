@@ -13,6 +13,7 @@ import {
     RotateCcw,
     Search,
     SlidersHorizontal,
+    Trash2,
 } from 'lucide-react';
 import {useStore} from '../store-context.js';
 import {currency, dateLabel, getStockStatus, number} from '../data.js';
@@ -31,6 +32,7 @@ import RestockModal from '../components/RestockModal.jsx';
 import ProductImage, {ProductImageUpload} from '../components/ProductImage.jsx';
 import useUrlPagination from '../utils/useUrlPagination.js';
 import PrettySelect from '../components/PrettySelect.jsx';
+import {generateProductSku} from '../utils/products.js';
 
 /**
  * @typedef {{ name: string, sku: string, categoryId: string, price: string | number, cost: string | number, minStock: string | number, stock: string | number, active: boolean, image: string, imageRemoved?: boolean }} ProductFormState
@@ -90,8 +92,8 @@ function ProductDetail({product, category, onClose, onEdit, onRestock, canManage
 
 /** @param {{ navigate: (path: string, options?: { replace?: boolean }) => void, viewId?: string, initialCategory?: string }} props */
 export default function Products({navigate, viewId, initialCategory}) {
-    const {products, categories, toggleProduct, session} = useStore();
-    const canManage = session.role === 'Administrator';
+    const {products, categories, toggleProduct, deleteProduct, session} = useStore();
+    const canManage = session.role === 'Administrator' || session.role === 'Inventory Staff';
     const canRestock = session.role !== 'Cashier';
     const [search, setSearch] = useState('');
     const [category, setCategory] = useState(initialCategory || 'all');
@@ -99,6 +101,7 @@ export default function Products({navigate, viewId, initialCategory}) {
     const [sort, setSort] = useState('name');
     const [selectedId, setSelectedId] = useState(viewId || null);
     const [restockId, setRestockId] = useState(/** @type {string | null} */ (null));
+    const [deleteId, setDeleteId] = useState(/** @type {string | null} */ (null));
     const pageSize = 8;
 
     useEffect(() => {
@@ -130,6 +133,7 @@ export default function Products({navigate, viewId, initialCategory}) {
     const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
     const selected = products.find((product) => product.id === selectedId);
     const selectedCategory = categories.find((item) => item.id === selected?.categoryId);
+    const deleteTarget = products.find((product) => product.id === deleteId);
     const categoryName = (/** @type {string} */ id) => categories.find((item) => item.id === id)?.name || 'Uncategorized';
     const reset = () => {
         setSearch('');
@@ -238,6 +242,10 @@ export default function Products({navigate, viewId, initialCategory}) {
                                         title={product.active ? 'Deactivate product' : 'Activate product'}
                                         aria-label={product.active ? `Deactivate ${product.name}` : `Activate ${product.name}`}>
                                         <Power size={17}/></button>}
+                                    {canManage && <button className="icon-button small text-danger"
+                                                          onClick={() => setDeleteId(product.id)} title="Delete product"
+                                                          aria-label={`Delete ${product.name}`}><Trash2 size={16}/>
+                                    </button>}
                                 </div>
                             </td>
                         </tr>)}
@@ -266,6 +274,15 @@ export default function Products({navigate, viewId, initialCategory}) {
             />
             {canRestock && <RestockModal open={Boolean(restockId)} product={products.find((p) => p.id === restockId)}
                                          onClose={() => setRestockId(null)}/>}
+            <Modal open={Boolean(deleteTarget)} onClose={() => setDeleteId(null)} title="Delete product?"
+                   subtitle={deleteTarget ? `Remove ${deleteTarget.name} from the catalog.` : ''} footer={<>
+                <button className="button button-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
+                <button className="button button-danger" onClick={() => {
+                    if (deleteTarget && deleteProduct(deleteTarget.id)) setDeleteId(null);
+                }}><Trash2 size={16}/>Delete Product
+                </button>
+            </>}><p className="modal-paragraph">Products with sales or inventory history cannot be deleted. Deactivate
+                those products to preserve accurate records.</p></Modal>
         </div>
     );
 }
@@ -286,10 +303,14 @@ const blankProduct = {
 
 /** @param {{ navigate: (path: string) => void, productId?: string }} props */
 export function ProductForm({navigate, productId}) {
-    const {products, categories, addProduct, updateProduct} = useStore();
+    const {products, categories, addProduct, updateProduct, addCategory} = useStore();
     const existing = products.find((product) => product.id === productId);
     const [form, setForm] = useState(() => /** @type {ProductFormState} */ (existing ? {...existing} : blankProduct));
     const [errors, setErrors] = useState(/** @type {ProductFormErrors} */ ({}));
+    const [autoSku, setAutoSku] = useState(!existing);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const generatedSku = useMemo(() => generateProductSku(products, categories, form.categoryId, productId), [products, categories, form.categoryId, productId]);
+    const skuToSave = autoSku ? generatedSku : form.sku.trim().toUpperCase();
     const set = (/** @type {keyof ProductFormState} */ key, /** @type {string | number | boolean} */ value) => {
         setForm((current) => /** @type {ProductFormState} */ ({...current, [key]: value}));
         setErrors((current) => ({...current, [key]: ''}));
@@ -299,9 +320,12 @@ export function ProductForm({navigate, productId}) {
         /** @type {ProductFormErrors} */
         const next = {};
         if (!form.name.trim()) next.name = 'Product name is required.';
-        if (!form.sku.trim()) next.sku = 'SKU / product code is required.';
-        if (products.some((product) => product.id !== productId && product.sku.toLowerCase() === form.sku.trim().toLowerCase())) next.sku = `SKU “${form.sku}” already exists in the system.`;
-        if (!form.categoryId) next.categoryId = 'Select a category.';
+        if (!skuToSave) next.sku = 'SKU / product code is required.';
+        if (products.some((product) => product.id !== productId && product.sku.toLowerCase() === skuToSave.toLowerCase())) next.sku = `SKU "${skuToSave}" already exists in the system.`;
+        if (form.categoryId === '__other') {
+            if (!newCategoryName.trim()) next.categoryId = 'Enter a name for the new category.';
+            else if (categories.some((category) => category.name.toLowerCase() === newCategoryName.trim().toLowerCase())) next.categoryId = 'A category with this name already exists.';
+        } else if (!form.categoryId) next.categoryId = 'Select a category.';
         if (form.price === '' || Number(form.price) < 0) next.price = form.price === '' ? 'Selling price is required.' : 'Price cannot be a negative value.';
         if (Number(form.cost) < 0) next.cost = 'Cost price cannot be negative.';
         if (Number(form.minStock) < 0) next.minStock = 'Minimum stock cannot be negative.';
@@ -313,9 +337,19 @@ export function ProductForm({navigate, productId}) {
     const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!validate()) return;
+        let categoryId = form.categoryId;
+        if (categoryId === '__other') {
+            const category = addCategory({
+                name: newCategoryName.trim(),
+                description: `Created while adding ${form.name.trim()}.`,
+                color: '#6574e8'
+            });
+            categoryId = category.id;
+        }
         const payload = {
             ...form,
-            sku: form.sku.trim().toUpperCase(),
+            categoryId,
+            sku: skuToSave,
             name: form.name.trim(),
             stock: existing ? existing.stock : Number(form.stock || 0)
         };
@@ -352,15 +386,29 @@ export function ProductForm({navigate, productId}) {
                                                                                         onChange={(event) => set('name', event.target.value)}
                                                                                         placeholder="e.g. Plastic Lunch Box"/></Field>
                         <Field label="SKU / Product Code" required error={errors.sku}
-                               hint="Use a unique code such as PL-010."><input className="monospace" value={form.sku}
-                                                                               onChange={(event) => set('sku', event.target.value)}
-                                                                               placeholder="e.g. PL-010"/></Field>
-                        <Field label="Category" required error={errors.categoryId}><PrettySelect value={form.categoryId}
-                                                                                                 onChange={(event) => set('categoryId', event.target.value)}>
+                               hint={autoSku ? 'Generated from the category and next available sequence.' : 'Use a unique code such as PL-010.'}><input
+                            className="monospace" value={autoSku ? generatedSku : form.sku}
+                            onChange={(event) => set('sku', event.target.value)} placeholder="e.g. PL-010"
+                            readOnly={autoSku} aria-label="SKU / Product Code"/></Field>
+                        <label className="auto-sku-option"><input type="checkbox" checked={autoSku}
+                                                                  onChange={(event) => {
+                                                                      setAutoSku(event.target.checked);
+                                                                      setErrors((current) => ({...current, sku: ''}));
+                                                                  }}/><span><strong>Generate SKU automatically</strong><small>Use the next unique product code for this category.</small></span></label>
+                        <Field label="Category" required error={form.categoryId === '__other' ? '' : errors.categoryId}><PrettySelect
+                            value={form.categoryId} onChange={(event) => set('categoryId', event.target.value)}>
                             <option value="">Select a category</option>
                             {categories.map((category) => <option value={category.id}
                                                                   key={category.id}>{category.name}</option>)}
+                            <option value="__other">Other - create new category</option>
                         </PrettySelect></Field>
+                        {form.categoryId === '__other' &&
+                            <Field label="New Category Name" required error={errors.categoryId}
+                                   hint="The category will be created and assigned to this product."><input
+                                value={newCategoryName} onChange={(event) => {
+                                setNewCategoryName(event.target.value);
+                                setErrors((current) => ({...current, categoryId: ''}));
+                            }} placeholder="e.g. Kitchenware"/></Field>}
                         <ProductImageUpload value={form.image || ''} onChange={(image) => {
                             set('image', image);
                             set('imageRemoved', !image);
@@ -393,7 +441,7 @@ export function ProductForm({navigate, productId}) {
                                                                                                           value={form.minStock}
                                                                                                           onChange={(event) => set('minStock', event.target.value)}/></Field>
                         {existing ? <Field label="Current Available Stock"
-                                           hint="Use Add Stock or a completed sale to change inventory quantity.">
+                                           hint="Use Add Stock, a customer return or a completed sale to change inventory quantity.">
                             <div className="readonly-input"><strong>{existing.stock} units</strong><StatusBadge
                                 status={getStockStatus(existing)}/></div>
                         </Field> : <Field label="Initial Available Stock" error={errors.stock}

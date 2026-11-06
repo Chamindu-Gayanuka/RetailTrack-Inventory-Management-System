@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { ImagePlus, LoaderCircle, Package, Trash2, Upload } from 'lucide-react';
-import { Field } from './UI.jsx';
+import {useEffect, useId, useRef, useState} from 'react';
+import {ImagePlus, LoaderCircle, Package, Trash2, Upload} from 'lucide-react';
+import {Field} from './UI.jsx';
 
 /** @typedef {import('../types.js').Product} Product */
 
@@ -15,7 +15,7 @@ const maximumImageDimension = 1000;
 function readFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(/** @type {string} */(reader.result));
+        reader.onload = () => resolve(/** @type {string} */ (reader.result));
         reader.onerror = () => reject(new Error('The selected image could not be read.'));
         reader.readAsDataURL(file);
     });
@@ -55,7 +55,7 @@ async function prepareImage(file) {
 }
 
 /** @param {{ product?: Product | null, size?: string, className?: string }} props */
-export default function ProductImage({ product = null, size = 'medium', className = '' }) {
+export default function ProductImage({product = null, size = 'medium', className = ''}) {
     const [failed, setFailed] = useState(false);
     const source = product?.image || '';
 
@@ -63,20 +63,20 @@ export default function ProductImage({ product = null, size = 'medium', classNam
 
     return (
         <span className={`product-image product-image-${size} ${className}`.trim()}>
-            {source && !failed ? (
-                <img src={source} alt="" loading="lazy" onError={() => setFailed(true)} />
-            ) : (
-                <Package size={size === 'large' ? 30 : size === 'tiny' ? 15 : 19} aria-hidden="true" />
-            )}
-        </span>
+      {source && !failed ? (
+          <img src={source} alt="" loading="lazy" onError={() => setFailed(true)}/>
+      ) : (
+          <Package size={size === 'large' ? 30 : size === 'tiny' ? 15 : 19} aria-hidden="true"/>
+      )}
+    </span>
     );
 }
 
 /** @param {{ product?: Product | null, name?: string, sku?: string | false, size?: string, className?: string }} props */
-export function ProductCell({ product = null, name = '', sku = '', size = 'small', className = '' }) {
+export function ProductCell({product = null, name = '', sku = '', size = 'small', className = ''}) {
     return (
         <div className={`product-cell ${className}`.trim()}>
-            <ProductImage product={product} size={size} />
+            <ProductImage product={product} size={size}/>
             <div className="primary-cell">
                 <strong>{name || product?.name || 'Removed product'}</strong>
                 {sku !== false && <span className="monospace">{sku || product?.sku || '-'}</span>}
@@ -86,9 +86,9 @@ export function ProductCell({ product = null, name = '', sku = '', size = 'small
 }
 
 /** @param {{ value: string, onChange: (value: string) => void }} props */
-export function ProductImageUpload({ value, onChange }) {
+export function ProductImageUpload({value, onChange}) {
     const inputId = useId();
-    const inputRef = useRef(/** @type {HTMLInputElement | null} */(null));
+    const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
 
@@ -117,17 +117,24 @@ export function ProductImageUpload({ value, onChange }) {
         >
             <div className={`product-image-uploader ${value ? 'has-image' : ''}`}>
                 <div className="product-image-preview">
-                    {value ? <img src={value} alt="Selected product preview" /> : <ImagePlus size={27} aria-hidden="true" />}
+                    {value ? <img src={value} alt="Selected product preview"/> :
+                        <ImagePlus size={27} aria-hidden="true"/>}
                 </div>
                 <div className="product-image-upload-copy">
                     <strong>{value ? 'Product image added' : 'Add a product image'}</strong>
                     <span>{value ? 'Replace or remove this image before saving.' : 'Help staff recognize this item in the catalog.'}</span>
                     <div className="product-image-upload-actions">
-                        <button type="button" className="button button-secondary button-small" onClick={() => inputRef.current?.click()} disabled={processing}>
-                            {processing ? <LoaderCircle size={16} className="product-image-spinner" /> : <Upload size={16} />}
+                        <button type="button" className="button button-secondary button-small"
+                                onClick={() => inputRef.current?.click()} disabled={processing}>
+                            {processing ? <LoaderCircle size={16} className="product-image-spinner"/> :
+                                <Upload size={16}/>}
                             {processing ? 'Processing image...' : value ? 'Replace image' : 'Choose image'}
                         </button>
-                        {value && <button type="button" className="button button-danger-outline button-small" onClick={() => { onChange(''); setError(''); }} disabled={processing}><Trash2 size={15} />Remove</button>}
+                        {value &&
+                            <button type="button" className="button button-danger-outline button-small" onClick={() => {
+                                onChange('');
+                                setError('');
+                            }} disabled={processing}><Trash2 size={15}/>Remove</button>}
                     </div>
                 </div>
             </div>

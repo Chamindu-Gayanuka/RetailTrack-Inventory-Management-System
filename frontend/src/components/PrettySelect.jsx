@@ -1,6 +1,6 @@
-import { Children, isValidElement, useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import {Children, isValidElement, useEffect, useId, useRef, useState} from 'react';
+import {Check, ChevronDown} from 'lucide-react';
+import {createPortal} from 'react-dom';
 import useFloatingMenu from '../utils/useFloatingMenu.js';
 
 /**
@@ -9,23 +9,38 @@ import useFloatingMenu from '../utils/useFloatingMenu.js';
  *
  * @param {{ value?: string | number, onChange?: (event: any) => void, children?: import('react').ReactNode, disabled?: boolean, className?: string, [key: string]: any }} props
  */
-export default function PrettySelect({ value = '', onChange, children, disabled = false, className = '', ...buttonProps }) {
+export default function PrettySelect({
+                                         value = '',
+                                         onChange,
+                                         children,
+                                         disabled = false,
+                                         className = '',
+                                         ...buttonProps
+                                     }) {
     const [open, setOpen] = useState(false);
-    const rootRef = useRef(/** @type {HTMLDivElement | null} */(null));
-    const triggerRef = useRef(/** @type {HTMLButtonElement | null} */(null));
-    const menuRef = useRef(/** @type {HTMLDivElement | null} */(null));
+    const rootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+    const triggerRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
+    const menuRef = useRef(/** @type {HTMLDivElement | null} */ (null));
     const menuId = useId();
 
     const options = Children.toArray(children).flatMap((child) => {
         if (!isValidElement(child)) return [];
         const props = /** @type {{ value?: string | number, disabled?: boolean, children?: import('react').ReactNode }} */ (child.props);
-        return [{ value: String(props.value ?? props.children ?? ''), label: props.children, disabled: Boolean(props.disabled) }];
+        return [{
+            value: String(props.value ?? props.children ?? ''),
+            label: props.children,
+            disabled: Boolean(props.disabled)
+        }];
     });
     const selected = options.find((option) => option.value === String(value));
-    const menuStyle = useFloatingMenu(open, triggerRef, menuRef, `${value}-${options.length}`, { minWidth: 180, maxWidth: 340, maxHeight: 330 });
+    const menuStyle = useFloatingMenu(open, triggerRef, menuRef, `${value}-${options.length}`, {
+        minWidth: 180,
+        maxWidth: 340,
+        maxHeight: 330
+    });
     const focusOption = (/** @type {number} */ index, /** @type {boolean} */ preventScroll = false) => {
         const element = menuRef.current?.querySelector(`[data-option-index="${index}"]`);
-        if (element instanceof HTMLElement) element.focus({ preventScroll });
+        if (element instanceof HTMLElement) element.focus({preventScroll});
     };
 
     useEffect(() => {
@@ -45,9 +60,9 @@ export default function PrettySelect({ value = '', onChange, children, disabled 
     }, [open]);
 
     const choose = (/** @type {string} */ nextValue) => {
-        onChange?.({ target: { value: nextValue }, currentTarget: { value: nextValue } });
+        onChange?.({target: {value: nextValue}, currentTarget: {value: nextValue}});
         setOpen(false);
-        triggerRef.current?.focus({ preventScroll: true });
+        triggerRef.current?.focus({preventScroll: true});
     };
 
     const onKeyDown = (/** @type {import('react').KeyboardEvent<HTMLDivElement>} */ event) => {
@@ -57,10 +72,16 @@ export default function PrettySelect({ value = '', onChange, children, disabled 
             triggerRef.current?.focus();
             return;
         }
-        if (event.key === 'Tab') { setOpen(false); return; }
+        if (event.key === 'Tab') {
+            setOpen(false);
+            return;
+        }
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
-        if (!open) { setOpen(true); return; }
+        if (!open) {
+            setOpen(true);
+            return;
+        }
         const enabled = options.map((option, index) => !option.disabled ? index : -1).filter((index) => index >= 0);
         if (!enabled.length) return;
         const activeIndex = Number(document.activeElement?.getAttribute('data-option-index'));
@@ -86,7 +107,7 @@ export default function PrettySelect({ value = '', onChange, children, disabled 
                 onClick={() => setOpen((current) => !current)}
             >
                 <span className={selected ? '' : 'placeholder'}>{selected?.label || 'Select an option'}</span>
-                <ChevronDown size={16} className={open ? 'rotate' : ''} />
+                <ChevronDown size={16} className={open ? 'rotate' : ''}/>
             </button>
             {open && createPortal(
                 <div className="pretty-select-menu" id={menuId} ref={menuRef} role="listbox" style={menuStyle}>
@@ -102,7 +123,7 @@ export default function PrettySelect({ value = '', onChange, children, disabled 
                             onClick={() => choose(option.value)}
                         >
                             <span>{option.label}</span>
-                            {option.value === String(value) && <Check size={16} />}
+                            {option.value === String(value) && <Check size={16}/>}
                         </button>
                     ))}
                 </div>,

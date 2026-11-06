@@ -16,6 +16,7 @@ import {
     Save,
     ShieldCheck,
     Store,
+    Upload,
     UserRound,
 } from 'lucide-react';
 import {useStore} from '../store-context.js';
@@ -23,34 +24,57 @@ import {rolePermissions} from '../data.js';
 import {Avatar, Field, Modal, PageHeader, Toggle} from '../components/UI.jsx';
 import PrettySelect from '../components/PrettySelect.jsx';
 import EmailVerification from '../components/EmailVerification.jsx';
+import {downloadBackupJson, readBackupFile} from '../utils/backup.js';
+import {downloadBusinessPdf} from '../utils/pdf.js';
 
 export default function Settings() {
-    const {settings, updateSettings, products, sales, users, transactions, notify} = useStore();
+    const {
+        settings,
+        updateSettings,
+        products,
+        categories,
+        sales,
+        returns,
+        purchaseOrders,
+        users,
+        transactions,
+        profile,
+        importBackup,
+        notify
+    } = useStore();
     const [tab, setTab] = useState('store');
     const [form, setForm] = useState(settings);
+    const [importCandidate, setImportCandidate] = useState(/** @type {any} */ (null));
+    const [importError, setImportError] = useState('');
+    const backupFileRef = useRef(/** @type {HTMLInputElement | null} */ (null));
     useEffect(() => setForm(settings), [settings]);
     const set = (/** @type {keyof import('../types.js').StoreSettings} */ key, /** @type {string | boolean} */ value) => setForm((current) => /** @type {import('../types.js').StoreSettings} */ ({
         ...current,
         [key]: value
     }));
 
+    const backupData = {settings, profile, products, categories, sales, returns, purchaseOrders, users, transactions};
     const downloadDataExport = () => {
-        const payload = JSON.stringify({
-            formatVersion: 1,
-            exportedAt: new Date().toISOString(),
-            settings,
-            products,
-            sales,
-            users,
-            transactions
-        }, null, 2);
-        const url = URL.createObjectURL(new Blob([payload], {type: 'application/json'}));
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `retailtrack-data-export-${new Date().toISOString().slice(0, 10)}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
-        notify('Data export downloaded.');
+        downloadBackupJson(backupData);
+        notify('JSON backup downloaded.');
+    };
+    const downloadDataPdf = () => {
+        downloadBusinessPdf(backupData);
+        notify('Business data PDF downloaded.');
+    };
+    const selectBackup = async (/** @type {import('react').ChangeEvent<HTMLInputElement>} */ event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        setImportError('');
+        try {
+            const data = await readBackupFile(file);
+            setImportCandidate({fileName: file.name, data});
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'The selected backup could not be read.';
+            setImportError(message);
+            notify(message, 'error');
+        }
     };
 
     let storageBytes = 0;
@@ -97,7 +121,9 @@ export default function Settings() {
                             onChange={(event) => set('storeName', event.target.value)}/></Field><Field label="Location"><input
                             value={form.location}
                             onChange={(event) => set('location', event.target.value)}/></Field><Field
-                            label="Contact phone">
+                            label="Receipt address" hint="Shown at the top of receipts and purchase orders."><input
+                            value={form.address || ''} onChange={(event) => set('address', event.target.value)}
+                            placeholder="Street, city and country"/></Field><Field label="Contact phone">
                             <div className="input-with-icon"><Phone size={16}/><input value={form.phone}
                                                                                       onChange={(event) => set('phone', event.target.value)}/>
                             </div>
@@ -171,13 +197,35 @@ export default function Settings() {
                         <div className="data-summary-grid">
                             <div><strong>{products.length}</strong><span>Products</span></div>
                             <div><strong>{sales.length}</strong><span>Sales</span></div>
+                            <div><strong>{returns.length}</strong><span>Returns</span></div>
+                            <div><strong>{purchaseOrders.length}</strong><span>Purchase Orders</span></div>
                             <div><strong>{transactions.length}</strong><span>Movements</span></div>
                             <div><strong>{users.length}</strong><span>Users</span></div>
                         </div>
                         <div className="data-action-card"><span><Download size={22}/></span>
-                            <div><strong>Export business data</strong><p>Download products, sales, users, movements and
-                                store settings in JSON format.</p></div>
-                            <button className="button button-secondary" onClick={downloadDataExport}>Download</button>
+                            <div><strong>Export backup or business PDF</strong><p>JSON supports full restoration. PDF
+                                provides readable business tables for sharing and printing.</p></div>
+                            <div className="data-action-buttons">
+                                <button className="button button-secondary" onClick={downloadDataExport}>Export JSON
+                                </button>
+                                <button className="button button-secondary" onClick={downloadDataPdf}>Export PDF
+                                </button>
+                            </div>
+                        </div>
+                        <div className="data-action-card"><span><Upload size={22}/></span>
+                            <div><strong>Import JSON backup</strong><p>Validate a backup, review its record counts and
+                                replace current business data after confirmation.</p><input ref={backupFileRef}
+                                                                                            type="file"
+                                                                                            accept=".json,application/json"
+                                                                                            onChange={selectBackup}
+                                                                                            hidden/></div>
+                            <button className="button button-primary" onClick={() => backupFileRef.current?.click()}>
+                                <Upload size={16}/>Choose File
+                            </button>
+                        </div>
+                        {importError && <div className="backup-import-error" role="alert">{importError}</div>}
+                        <div className="info-callout">Backup imports replace business records but do not import or
+                            change local account passwords.
                         </div>
                         <div className="data-action-card"><span><HardDrive size={22}/></span>
                             <div><strong>Browser storage</strong><p>Records are saved automatically in this browser.
@@ -186,6 +234,30 @@ export default function Settings() {
                     </>}
                 </section>
             </div>
+            <Modal open={Boolean(importCandidate)} onClose={() => setImportCandidate(null)}
+                   title="Import backup and replace current data?" subtitle={importCandidate?.fileName || ''} footer={<>
+                <button className="button button-secondary" onClick={() => setImportCandidate(null)}>Cancel</button>
+                <button className="button button-primary" onClick={() => {
+                    if (!importCandidate) return;
+                    importBackup(importCandidate.data);
+                    setImportCandidate(null);
+                }}><Upload size={16}/>Import & Replace
+                </button>
+            </>}>
+                {importCandidate &&
+                    <div className="backup-import-summary"><p>This validated backup contains the following records.
+                        Current business data will be replaced.</p>
+                        <div className="data-summary-grid">
+                            <div><strong>{importCandidate.data.products.length}</strong><span>Products</span></div>
+                            <div><strong>{importCandidate.data.sales.length}</strong><span>Sales</span></div>
+                            <div><strong>{importCandidate.data.users.length}</strong><span>Users</span></div>
+                            <div><strong>{importCandidate.data.transactions.length}</strong><span>Movements</span></div>
+                        </div>
+                        <div className="info-callout">Local passwords are not included in the backup and will remain
+                            unchanged.
+                        </div>
+                    </div>}
+            </Modal>
         </div>
     );
 }
