@@ -1,9 +1,9 @@
-import { createContext, useContext } from 'react';
+import {createContext, useContext} from 'react';
 
 /** @typedef {import('./types.js').StoreValue} StoreValue */
 
 /** Shared application state. Kept outside the provider module for Fast Refresh. */
-export const StoreContext = createContext(/** @type {StoreValue | null} */(null));
+export const StoreContext = createContext(/** @type {StoreValue | null} */ (null));
 
 /** @returns {StoreValue} */
 export function useStore() {

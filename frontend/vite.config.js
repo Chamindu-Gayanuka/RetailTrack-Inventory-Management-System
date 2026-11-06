@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -12,5 +12,15 @@ export default defineConfig({
         host: '0.0.0.0',
         port: 4173,
         allowedHosts: true,
+    },
+    build: {
+        chunkSizeWarningLimit: 700,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'pdf-engine': ['jspdf', 'jspdf-autotable'],
+                },
+            },
+        },
     },
 });

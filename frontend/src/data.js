@@ -391,7 +391,7 @@ export const loginAccounts = [
 /** @type {Record<string, string[]>} */
 export const rolePermissions = {
     Administrator: ['Full Inventory Access', 'User Management', 'Financial Reporting', 'Audit Logs'],
-    'Inventory Staff': ['View Products', 'Add and Update Stock', 'View Stock Alerts', 'Inventory Summaries'],
+    'Inventory Staff': ['Manage Products', 'Add and Update Stock', 'Process Customer Returns', 'View Stock Alerts', 'Inventory Summaries'],
     Cashier: ['Search Products', 'Check Available Stock', 'Process Customer Sales', 'View Sales History'],
 };
 
@@ -399,6 +399,7 @@ export const rolePermissions = {
 export const initialSettings = {
     storeName: 'Ape Kade',
     location: 'Padiyathalawa',
+    address: 'Main Street, Padiyathalawa, Sri Lanka',
     phone: '+94 55 224 6800',
     email: 'hello@apekade.lk',
     currency: 'Sri Lankan Rupee (LKR)',

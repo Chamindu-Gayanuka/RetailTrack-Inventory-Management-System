@@ -1,9 +1,9 @@
-import { useRef } from 'react';
+import {useRef} from 'react';
 
 /** @param {{ value: string, onChange: (value: string) => void, disabled?: boolean, autoFocus?: boolean }} props */
-export default function OtpInput({ value, onChange, disabled = false, autoFocus = false }) {
-    const refs = useRef(/** @type {Array<HTMLInputElement | null>} */([]));
-    const digits = Array.from({ length: 6 }, (_, index) => value[index] || '');
+export default function OtpInput({value, onChange, disabled = false, autoFocus = false}) {
+    const refs = useRef(/** @type {Array<HTMLInputElement | null>} */ ([]));
+    const digits = Array.from({length: 6}, (_, index) => value[index] || '');
 
     const focus = (/** @type {number} */ index) => {
         const input = refs.current[Math.max(0, Math.min(5, index))];
@@ -28,11 +28,16 @@ export default function OtpInput({ value, onChange, disabled = false, autoFocus 
             {digits.map((digit, index) => (
                 <input
                     key={index}
-                    ref={(element) => { refs.current[index] = element; }}
+                    ref={(element) => {
+                        refs.current[index] = element;
+                    }}
                     value={digit}
                     onChange={(event) => {
                         const entered = event.target.value.replace(/\D/g, '');
-                        if (entered.length > 1) { fill(entered); return; }
+                        if (entered.length > 1) {
+                            fill(entered);
+                            return;
+                        }
                         updateDigit(index, entered.slice(-1));
                         if (entered && index < 5) focus(index + 1);
                     }}
@@ -40,12 +45,24 @@ export default function OtpInput({ value, onChange, disabled = false, autoFocus 
                         if (event.key === 'Backspace') {
                             event.preventDefault();
                             if (digits[index]) updateDigit(index, '');
-                            else if (index > 0) { updateDigit(index - 1, ''); focus(index - 1); }
+                            else if (index > 0) {
+                                updateDigit(index - 1, '');
+                                focus(index - 1);
+                            }
                         }
-                        if (event.key === 'ArrowLeft') { event.preventDefault(); focus(index - 1); }
-                        if (event.key === 'ArrowRight') { event.preventDefault(); focus(index + 1); }
+                        if (event.key === 'ArrowLeft') {
+                            event.preventDefault();
+                            focus(index - 1);
+                        }
+                        if (event.key === 'ArrowRight') {
+                            event.preventDefault();
+                            focus(index + 1);
+                        }
                     }}
-                    onPaste={(event) => { event.preventDefault(); fill(event.clipboardData.getData('text')); }}
+                    onPaste={(event) => {
+                        event.preventDefault();
+                        fill(event.clipboardData.getData('text'));
+                    }}
                     onFocus={(event) => event.currentTarget.select()}
                     inputMode="numeric"
                     pattern="[0-9]*"

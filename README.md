@@ -1,4 +1,4 @@
-# RetailTrack – Inventory Management System
+# RetailTrack - Inventory Management System
 
 RetailTrack is a modern **Inventory Management System** designed for retail businesses to efficiently manage products, inventory, sales, orders, and day-to-day store operations.
 
@@ -175,10 +175,10 @@ The system is being developed incrementally, with features and modules implement
 
 RetailTrack is developed as a group software project.
 
-* **Chamindu Gayanuka Dharmasiri** – Frontend Developer & Project Manager
-* **Sandun Madushan** – QA Engineer & Documentation
-* **Chathuranga Sampath** – Business Analyst & UI/UX Designer
-* **Dilwan Thennakoon** – Backend Developer & Database Administrator
+* **Chamindu Gayanuka Dharmasiri** - Frontend Developer & Project Manager
+* **Sandun Madushan** - QA Engineer & Documentation
+* **Chathuranga Sampath** - Business Analyst & UI/UX Designer
+* **Dilwan Thennakoon** - Backend Developer & Database Administrator
 
 ## 📄 License
 

@@ -71,6 +71,36 @@ export interface Sale {
     cashier: string;
     createdAt: string;
     completedAt?: string;
+    refundedTotal?: number;
+    returnStatus?: 'Partially returned' | 'Returned';
+}
+
+export interface CustomerReturn {
+    id: string;
+    numericId: number;
+    saleId: string;
+    customer: string;
+    items: SaleItem[];
+    total: number;
+    reason: string;
+    processedBy: string;
+    createdAt: string;
+}
+
+export interface PurchaseOrder {
+    id: string;
+    numericId: number;
+    productId: string;
+    sku: string;
+    productName: string;
+    supplier: string;
+    quantity: number;
+    currentStock: number;
+    minStock: number;
+    unitCost: number;
+    status: string;
+    createdBy: string;
+    createdAt: string;
 }
 
 export interface InventoryTransaction {
@@ -127,6 +157,7 @@ export interface Profile {
 export interface StoreSettings {
     storeName: string;
     location: string;
+    address?: string;
     phone: string;
     email: string;
     currency: string;
@@ -151,6 +182,8 @@ export interface StoreValue {
     products: Product[];
     categories: Category[];
     sales: Sale[];
+    returns: CustomerReturn[];
+    purchaseOrders: PurchaseOrder[];
     transactions: InventoryTransaction[];
     users: UserAccount[];
     profile: Profile;

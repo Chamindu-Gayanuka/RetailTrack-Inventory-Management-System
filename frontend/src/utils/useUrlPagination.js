@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import {useCallback, useEffect, useRef} from 'react';
 
 /**
  * Keep pagination in the URL so direct links and browser Back/Forward restore
@@ -24,7 +24,7 @@ export default function useUrlPagination(navigate, pageCount, resetKey) {
         else url.searchParams.set('page', String(nextPage));
         const target = `${url.pathname}${url.search}`;
         const current = `${window.location.pathname}${window.location.search}`;
-        if (target !== current) navigate(target, { replace });
+        if (target !== current) navigate(target, {replace});
     }, [navigate, pageCount]);
 
     useEffect(() => {

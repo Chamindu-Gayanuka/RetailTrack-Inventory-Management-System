@@ -7,6 +7,7 @@ import Categories from './pages/Categories.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Sales, {NewSale} from './pages/Sales.jsx';
 import Reports from './pages/Reports.jsx';
+import Returns from './pages/Returns.jsx';
 import Users from './pages/Users.jsx';
 import Settings, {Profile} from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
@@ -24,14 +25,17 @@ const readLocation = () => ({
 
 /** @type {Partial<Record<import('./types.js').Role, string[]>>} */
 const roleRoutes = {
-    'Inventory Staff': ['dashboard', 'products', 'inventory', 'sales', 'reports', 'profile'],
-    Cashier: ['dashboard', 'products', 'sales', 'profile'],
+    'Inventory Staff': ['dashboard', 'products', 'inventory', 'sales', 'returns', 'reports', 'profile'],
+    Cashier: ['dashboard', 'products', 'sales', 'returns', 'profile'],
 };
 
-/** @param {string} route @param {import('./types.js').Role} role */
+/**
+ * @param {string} route
+ * @param {import('./types.js').Role} role
+ */
 function canAccess(route, role) {
     if (role === 'Administrator') return true;
-    if (route === 'products/new' || route.startsWith('products/edit/') || (route === 'sales/new' && role === 'Inventory Staff')) return false;
+    if (((route === 'products/new' || route.startsWith('products/edit/')) && role === 'Cashier') || (route === 'sales/new' && role === 'Inventory Staff')) return false;
     const root = route.split('/')[0] || 'dashboard';
     return (roleRoutes[role] || ['dashboard', 'profile']).includes(root);
 }
@@ -122,6 +126,7 @@ export default function App() {
     else if (route.startsWith('sales/view/')) page =
         <Sales navigate={navigate} viewId={decodeURIComponent(route.split('/')[2])}/>;
     else if (route === 'sales') page = <Sales navigate={navigate}/>;
+    else if (route === 'returns') page = <Returns navigate={navigate}/>;
     else if (route === 'reports') page = <Reports/>;
     else if (route === 'users') page = <Users/>;
     else if (route === 'settings') page = <Settings/>;

@@ -11,6 +11,7 @@ import {
     seedUsers,
 } from './data.js';
 import {passwordValidationError} from './utils/credentials.js';
+import {getNextSaleNumericId, getReturnedQuantity} from './utils/sales.js';
 
 /**
  * @typedef {import('./types.js').StoreValue} StoreValue
@@ -171,6 +172,8 @@ export function StoreProvider({children}) {
     const [products, setProducts] = usePersistentState('retailtrack-products', seedProducts, withExampleProductImages);
     const [categories, setCategories] = usePersistentState('retailtrack-categories', seedCategories);
     const [sales, setSales] = usePersistentState('retailtrack-sales', seedSales, (records) => /** @type {Sale[]} */ (refreshSeedDates ? withCurrentSeedDates(records, seedSales) : records));
+    const [returns, setReturns] = usePersistentState('retailtrack-returns', /** @type {import('./types.js').CustomerReturn[]} */ ([]));
+    const [purchaseOrders, setPurchaseOrders] = usePersistentState('retailtrack-purchase-orders', /** @type {import('./types.js').PurchaseOrder[]} */ ([]));
     const [transactions, setTransactions] = usePersistentState('retailtrack-transactions', seedTransactions, (records) => /** @type {InventoryTransaction[]} */ (refreshSeedDates ? withCurrentSeedDates(records, seedTransactions) : records));
     const [users, setUsers] = usePersistentState('retailtrack-users', seedUsers, (records) => withEmailVerification(refreshSeedDates ? withCurrentSeedDates(records, seedUsers, 'lastActive') : records));
     const [profile, setProfile] = usePersistentState('retailtrack-profile', initialProfile);
@@ -311,6 +314,18 @@ export function StoreProvider({children}) {
         notify('Product details were updated.');
     }, [notify, setProducts]);
 
+    const deleteProduct = useCallback((/** @type {string} */ id) => {
+        const product = products.find((item) => item.id === id);
+        if (!product) return false;
+        if (sales.some((sale) => sale.items.some((item) => item.productId === id)) || transactions.some((item) => item.productId === id)) {
+            notify('This product has sales or stock history. Deactivate it to preserve the audit trail.', 'error');
+            return false;
+        }
+        setProducts((current) => current.filter((item) => item.id !== id));
+        notify(`${product.name} was deleted from the catalog.`, 'info');
+        return true;
+    }, [notify, products, sales, setProducts, transactions]);
+
     const toggleProduct = useCallback((/** @type {string} */ id) => {
         const selected = products.find((product) => product.id === id);
         if (!selected) return;
@@ -362,7 +377,7 @@ export function StoreProvider({children}) {
                 return null;
             }
         }
-        const numericId = Math.max(1032, ...sales.map((sale) => Number(sale.numericId) || 0)) + 1;
+        const numericId = getNextSaleNumericId(sales);
         const saleItems = items.map((item) => {
             const product = products.find((entry) => entry.id === item.productId);
             if (!product) throw new Error(`Product ${item.productId} is no longer available.`);
@@ -461,6 +476,109 @@ export function StoreProvider({children}) {
         return true;
     }, [notify, sales, setSales]);
 
+    /** @type {(input: { saleId: string, reason: string, items: Array<{ productId: string, qty: number }> }) => import('./types.js').CustomerReturn | null} */
+    const createReturn = useCallback(({saleId, reason, items}) => {
+        const sale = sales.find((item) => item.id === saleId);
+        if (!sale || sale.status !== 'Completed') {
+            notify('Only completed sales can be returned.', 'error');
+            return null;
+        }
+        const selected = items.filter((item) => Number(item.qty) > 0);
+        if (!selected.length) {
+            notify('Select at least one item and quantity to return.', 'error');
+            return null;
+        }
+        for (const item of selected) {
+            const original = sale.items.find((entry) => entry.productId === item.productId);
+            const quantity = Number(item.qty);
+            const remaining = original ? original.qty - getReturnedQuantity(returns, saleId, item.productId) : 0;
+            if (!original || !Number.isInteger(quantity) || quantity < 1 || quantity > remaining) {
+                notify(`Return quantity for ${original?.name || 'the selected item'} exceeds the available return quantity.`, 'error');
+                return null;
+            }
+        }
+        const returnItems = selected.map((item) => {
+            const original = sale.items.find((entry) => entry.productId === item.productId);
+            if (!original) throw new Error(`Sale item ${item.productId} is no longer available.`);
+            return {...original, qty: Number(item.qty)};
+        });
+        const numericId = Math.max(1000, ...returns.map((item) => Number(item.numericId) || Number(String(item.id).match(/\d+$/)?.[0]) || 0)) + 1;
+        const record = /** @type {import('./types.js').CustomerReturn} */ ({
+            id: `RET-${numericId}`,
+            numericId,
+            saleId,
+            customer: sale.customer,
+            items: returnItems,
+            total: returnItems.reduce((sum, item) => sum + item.qty * item.price, 0),
+            reason: reason.trim() || 'Customer return',
+            processedBy: session?.name || profile.name,
+            createdAt: new Date().toISOString(),
+        });
+        const updatedReturns = [record, ...returns];
+        setReturns(updatedReturns);
+        setSales((current) => current.map((item) => {
+            if (item.id !== saleId) return item;
+            const related = updatedReturns.filter((entry) => entry.saleId === saleId);
+            const fullyReturned = item.items.every((saleItem) => getReturnedQuantity(updatedReturns, saleId, saleItem.productId) >= saleItem.qty);
+            return {
+                ...item,
+                refundedTotal: related.reduce((sum, entry) => sum + entry.total, 0),
+                returnStatus: fullyReturned ? 'Returned' : 'Partially returned'
+            };
+        }));
+        setProducts((current) => current.map((product) => {
+            const returned = returnItems.find((item) => item.productId === product.id);
+            return returned ? {
+                ...product,
+                stock: Number(product.stock) + returned.qty,
+                updatedAt: record.createdAt
+            } : product;
+        }));
+        setTransactions((current) => [
+            ...returnItems.map((item, index) => ({
+                id: `tx${Date.now()}-${index}`,
+                type: 'inbound',
+                title: `Customer return ${record.id}`,
+                productId: item.productId,
+                quantity: item.qty,
+                createdAt: record.createdAt,
+                note: `${saleId} - ${record.reason}`,
+            })),
+            ...current,
+        ]);
+        notify(`${record.id} processed for ${saleId}. Stock was updated.`);
+        return record;
+    }, [notify, profile.name, returns, sales, session?.name, setProducts, setReturns, setSales, setTransactions]);
+
+    /** @type {(input: { productId: string, quantity: number, supplier?: string }) => import('./types.js').PurchaseOrder | null} */
+    const createPurchaseOrder = useCallback(({productId, quantity, supplier = ''}) => {
+        const product = products.find((item) => item.id === productId);
+        const qty = Number(quantity);
+        if (!product || !Number.isInteger(qty) || qty < 1) {
+            notify('Purchase order quantity must be a whole number of at least 1 unit.', 'error');
+            return null;
+        }
+        const numericId = Math.max(0, ...purchaseOrders.map((item) => Number(item.numericId) || Number(String(item.id).match(/\d+$/)?.[0]) || 0)) + 1;
+        const order = /** @type {import('./types.js').PurchaseOrder} */ ({
+            id: `PO-${String(numericId).padStart(6, '0')}`,
+            numericId,
+            productId,
+            sku: product.sku,
+            productName: product.name,
+            supplier: supplier.trim(),
+            quantity: qty,
+            currentStock: product.stock,
+            minStock: product.minStock,
+            unitCost: product.cost,
+            status: 'Created',
+            createdBy: session?.name || profile.name,
+            createdAt: new Date().toISOString(),
+        });
+        setPurchaseOrders((current) => [order, ...current]);
+        notify(`${order.id} created for ${product.name}.`);
+        return order;
+    }, [notify, products, profile.name, purchaseOrders, session?.name, setPurchaseOrders]);
+
     const addCategory = useCallback((/** @type {any} */ data) => {
         const category = {...data, id: `cat${Date.now()}`};
         setCategories((current) => [...current, category]);
@@ -528,10 +646,26 @@ export function StoreProvider({children}) {
         notify('Settings saved successfully.');
     }, [notify, setSettings]);
 
+    const importBackup = useCallback((/** @type {any} */ data) => {
+        setProducts(data.products);
+        setCategories(Array.isArray(data.categories) ? data.categories : categories);
+        setSales(data.sales);
+        setReturns(Array.isArray(data.returns) ? data.returns : []);
+        setPurchaseOrders(Array.isArray(data.purchaseOrders) ? data.purchaseOrders : []);
+        setTransactions(data.transactions);
+        setUsers(data.users);
+        setSettings({...initialSettings, ...(data.settings || {})});
+        if (data.profile) setProfile({...initialProfile, ...data.profile});
+        notify('Backup imported successfully. Local account passwords were not changed.');
+        return true;
+    }, [categories, notify, setCategories, setProducts, setProfile, setPurchaseOrders, setReturns, setSales, setSettings, setTransactions, setUsers]);
+
     const value = useMemo(() => /** @type {StoreValue} */ ({
         products,
         categories,
         sales,
+        returns,
+        purchaseOrders,
         transactions,
         users,
         profile,
@@ -549,11 +683,14 @@ export function StoreProvider({children}) {
         changePassword,
         addProduct,
         updateProduct,
+        deleteProduct,
         toggleProduct,
         restock,
         createSale,
         completeSale,
         cancelSale,
+        createReturn,
+        createPurchaseOrder,
         addCategory,
         updateCategory,
         deleteCategory,
@@ -562,12 +699,13 @@ export function StoreProvider({children}) {
         updateProfile,
         markEmailVerified,
         updateSettings,
+        importBackup,
     }), [
-        products, categories, sales, transactions, users, profile, settings, session, toasts,
+        products, categories, sales, returns, purchaseOrders, transactions, users, profile, settings, session, toasts,
         dismissToast, notify, login, logout, getAuthAccount, findAccountByEmail, authenticate, resetPassword, changePassword,
-        addProduct, updateProduct, toggleProduct, restock,
-        createSale, completeSale, cancelSale, addCategory, updateCategory, deleteCategory,
-        addUser, toggleUser, updateProfile, markEmailVerified, updateSettings,
+        addProduct, updateProduct, deleteProduct, toggleProduct, restock,
+        createSale, completeSale, cancelSale, createReturn, createPurchaseOrder, addCategory, updateCategory, deleteCategory,
+        addUser, toggleUser, updateProfile, markEmailVerified, updateSettings, importBackup,
     ]);
 
     return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

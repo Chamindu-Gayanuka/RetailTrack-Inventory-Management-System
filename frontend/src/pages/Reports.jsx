@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import {useStore} from '../store-context.js';
 import {downloadCsv} from '../utils/downloadCsv.js';
+import {downloadReportPdf} from '../utils/pdf.js';
+import {getNetSaleItems, getNetSaleTotal} from '../utils/sales.js';
 import {currency, getStockStatus, number} from '../data.js';
 import {BarChart, CardHeader, DonutChart, PageHeader, ProgressBar, StatCard, StatusBadge} from '../components/UI.jsx';
 import ProductImage, {ProductCell} from '../components/ProductImage.jsx';
@@ -26,36 +28,37 @@ import {buildPeriodBuckets, createPeriodState, getPeriodRange, isDateInPeriod} f
  * current product cost to estimate COGS because it does not yet have cost layers.
  * @param {import('../types.js').Sale} sale
  * @param {import('../types.js').Product[]} products
+ * @param {import('../types.js').CustomerReturn[]} returns
  */
-const saleCost = (sale, products) => sale.items.reduce((sum, item) => {
+const saleCost = (sale, products, returns) => getNetSaleItems(sale, returns).reduce((sum, item) => {
     const product = products.find((entry) => entry.id === item.productId);
     return sum + item.qty * Number(product?.cost || 0);
 }, 0);
 
 export default function Reports() {
-    const {products, categories, sales, notify, session} = useStore();
+    const {products, categories, sales, returns, notify, session, settings} = useStore();
     const [period, setPeriod] = useState(() => createPeriodState('weekly'));
     const [tab, setTab] = useState(session.role === 'Inventory Staff' ? 'inventory' : 'sales');
     const periodRange = getPeriodRange(period);
 
     const completedSales = useMemo(() => sales.filter((sale) => sale.status === 'Completed' && isDateInPeriod(sale.createdAt, period)), [sales, period]);
-    const revenue = completedSales.reduce((sum, sale) => sum + sale.total, 0);
-    const cogs = completedSales.reduce((sum, sale) => sum + saleCost(sale, products), 0);
+    const revenue = completedSales.reduce((sum, sale) => sum + getNetSaleTotal(sale, returns), 0);
+    const cogs = completedSales.reduce((sum, sale) => sum + saleCost(sale, products, returns), 0);
     const grossProfit = revenue - cogs;
     const profitMargin = revenue ? (grossProfit / revenue) * 100 : 0;
-    const unitsSold = completedSales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.qty, 0), 0);
+    const unitsSold = completedSales.reduce((sum, sale) => sum + getNetSaleItems(sale, returns).reduce((itemSum, item) => itemSum + item.qty, 0), 0);
 
     const chartData = useMemo(() => buildPeriodBuckets(period, sales).map((bucket) => {
         const matching = completedSales.filter((sale) => new Date(sale.createdAt) >= bucket.start && new Date(sale.createdAt) < bucket.end);
-        const value = matching.reduce((sum, sale) => sum + sale.total, 0);
-        const cost = matching.reduce((sum, sale) => sum + saleCost(sale, products), 0);
+        const value = matching.reduce((sum, sale) => sum + getNetSaleTotal(sale, returns), 0);
+        const cost = matching.reduce((sum, sale) => sum + saleCost(sale, products, returns), 0);
         return {label: bucket.label, value, cost, profit: value - cost, orders: matching.length};
-    }), [completedSales, period, products, sales]);
+    }), [completedSales, period, products, returns, sales]);
 
     const productPerformance = useMemo(() => {
         /** @type {Record<string, import('../types.js').SaleItem & { units: number, revenue: number, cost: number, profit: number }>} */
         const map = {};
-        completedSales.forEach((sale) => sale.items.forEach((item) => {
+        completedSales.forEach((sale) => getNetSaleItems(sale, returns).forEach((item) => {
             if (!map[item.productId]) map[item.productId] = {...item, units: 0, revenue: 0, cost: 0, profit: 0};
             const product = products.find((entry) => entry.id === item.productId);
             map[item.productId].units += item.qty;
@@ -64,7 +67,7 @@ export default function Reports() {
             map[item.productId].profit = map[item.productId].revenue - map[item.productId].cost;
         }));
         return Object.values(map).sort((a, b) => b.revenue - a.revenue);
-    }, [completedSales, products]);
+    }, [completedSales, products, returns]);
 
     const profitPerformance = useMemo(() => [...productPerformance].sort((a, b) => b.profit - a.profit), [productPerformance]);
     const categoryColors = ['#6574e8', '#2f9d8f', '#e5a43a', '#de6c75', '#3d9bc2'];
@@ -106,6 +109,42 @@ export default function Reports() {
         notify(`${tab === 'sales' ? 'Sales analytics' : tab === 'profit' ? 'Profit & Loss report' : 'Inventory report'} generated as CSV.`);
     };
 
+    const exportReportPdf = () => {
+        if (tab === 'sales') {
+            downloadReportPdf({
+                filename: 'retailtrack-sales-analytics.pdf',
+                title: 'Sales Analytics',
+                settings,
+                subtitle: periodRange.label,
+                summary: [['Net revenue', currency(revenue)], ['Completed orders', completedSales.length], ['Net units sold', unitsSold]],
+                head: ['Rank', 'SKU', 'Product', 'Units sold', 'Revenue'],
+                body: productPerformance.map((item, index) => [index + 1, item.sku, item.name, item.units, currency(item.revenue)])
+            });
+        } else if (tab === 'profit') {
+            downloadReportPdf({
+                filename: 'retailtrack-profit-loss.pdf',
+                title: 'Profit & Loss Report',
+                settings,
+                subtitle: periodRange.label,
+                summary: [['Net revenue', currency(revenue)], ['Cost of goods sold', currency(cogs)], ['Gross profit / loss', currency(grossProfit)], ['Gross margin', `${profitMargin.toFixed(2)}%`]],
+                head: ['SKU', 'Product', 'Units', 'Revenue', 'COGS', 'Gross result', 'Margin'],
+                body: profitPerformance.map((item) => [item.sku, item.name, item.units, currency(item.revenue), currency(item.cost), currency(item.profit), `${item.revenue ? ((item.profit / item.revenue) * 100).toFixed(2) : '0.00'}%`]),
+                note: 'COGS uses current product costs. Operating expenses and historical cost layers are not included. Customer returns are deducted from revenue and units sold.'
+            });
+        } else {
+            downloadReportPdf({
+                filename: 'retailtrack-inventory-report.pdf',
+                title: 'Inventory Report',
+                settings,
+                subtitle: `Generated ${new Date().toLocaleString('en-LK')}`,
+                summary: [['Total cost value', currency(inventoryValue)], ['Potential retail value', currency(retailValue)]],
+                head: ['SKU', 'Product', 'Category', 'Stock', 'Cost value', 'Retail value', 'Status'],
+                body: products.map((product) => [product.sku, product.name, categories.find((category) => category.id === product.categoryId)?.name || '-', product.stock, currency(product.stock * product.cost), currency(product.stock * product.price), getStockStatus(product)])
+            });
+        }
+        notify(`${tab === 'sales' ? 'Sales analytics' : tab === 'profit' ? 'Profit & Loss report' : 'Inventory report'} generated as PDF.`);
+    };
+
     return (
         <div>
             <PageHeader
@@ -113,7 +152,10 @@ export default function Reports() {
                 description={session.role === 'Administrator' ? 'Generate sales, inventory and profit/loss reports from your current business records.' : 'Generate a current inventory valuation and stock-status report.'}
                 actions={<>{tab !== 'inventory' &&
                     <PeriodFilter value={period} onChange={setPeriod} label="Report period"/>}
-                    <button className="button button-primary" onClick={exportReport}><Download size={16}/>Generate CSV
+                    <button className="button button-secondary" onClick={exportReport}><Download size={16}/>Generate CSV
+                    </button>
+                    <button className="button button-primary" onClick={exportReportPdf}><Download size={16}/>Generate
+                        PDF
                     </button>
                 </>}
             />

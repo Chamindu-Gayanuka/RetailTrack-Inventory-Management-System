@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import {useCallback, useLayoutEffect, useState} from 'react';
 
 /**
  * Position a popover within the viewport, including inside modals and on small
@@ -11,8 +11,11 @@ import { useCallback, useLayoutEffect, useState } from 'react';
  * @param {{ minWidth?: number, maxWidth?: number, maxHeight?: number }} [options]
  */
 export default function useFloatingMenu(open, anchorRef, menuRef, contentKey, options = {}) {
-    const { minWidth = 220, maxWidth = 340, maxHeight = 440 } = options;
-    const [style, setStyle] = useState(/** @type {import('react').CSSProperties} */({ position: 'fixed', visibility: 'hidden' }));
+    const {minWidth = 220, maxWidth = 340, maxHeight = 440} = options;
+    const [style, setStyle] = useState(/** @type {import('react').CSSProperties} */ ({
+        position: 'fixed',
+        visibility: 'hidden'
+    }));
 
     const updatePosition = useCallback(() => {
         const anchor = anchorRef.current;
@@ -27,7 +30,7 @@ export default function useFloatingMenu(open, anchorRef, menuRef, contentKey, op
         let top = rect.bottom + 7;
         if (top + height > viewportHeight - 8 && rect.top - height - 7 >= 8) top = rect.top - height - 7;
         if (top + height > viewportHeight - 8) top = Math.max(8, viewportHeight - height - 8);
-        setStyle({ position: 'fixed', top, left, width, maxHeight: height, overflowY: 'auto', visibility: 'visible' });
+        setStyle({position: 'fixed', top, left, width, maxHeight: height, overflowY: 'auto', visibility: 'visible'});
     }, [anchorRef, maxHeight, maxWidth, menuRef, minWidth]);
 
     useLayoutEffect(() => {
