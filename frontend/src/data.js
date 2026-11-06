@@ -356,7 +356,7 @@ export const initialProfile = {
     email: 'chamindu@apekade.lk',
     phone: '+94 76 294 4551',
     role: 'Administrator',
-    avatar: '/chamindu-avatar.png',
+    avatar: '',
     emailVerified: false,
 };
 
@@ -368,7 +368,7 @@ export const loginAccounts = [
         email: 'chamindu@apekade.lk',
         password: 'Retail2026',
         role: 'Administrator',
-        avatar: '/chamindu-avatar.png'
+        avatar: ''
     },
     {
         userId: 'u2',
