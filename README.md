@@ -140,6 +140,8 @@ The frontend currently runs on browser-stored demo data and is not connected to 
 
 ## 🔌 API Overview
 
+Full documentation lives in [`backend/README.md`](backend/README.md): [Supabase setup guide](backend/docs/SUPABASE.md), [API reference](backend/docs/API.md), [SRS traceability](backend/docs/TRACEABILITY.md) and a [Postman collection](backend/postman/).
+
 All routes are under `/api`. Responses are `{ "success": true, "data": ... }` or `{ "success": false, "message": "...", "errors": { "field": ["..."] } }`. Send the token from `POST /auth/login` as `Authorization: Bearer <token>`.
 
 | Area | Main endpoints |
