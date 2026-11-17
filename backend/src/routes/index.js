@@ -15,6 +15,8 @@ router.use('/users', require('./userRoutes'));
 router.use('/categories', require('./categoryRoutes'));
 router.use('/products', require('./productRoutes'));
 router.use('/inventory', require('./inventoryRoutes'));
+router.use('/sales', require('./salesRoutes'));
+router.use('/returns', require('./returnRoutes'));
 // Upcoming:
 // ...
 
