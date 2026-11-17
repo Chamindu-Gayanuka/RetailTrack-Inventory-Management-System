@@ -10,8 +10,9 @@ router.get('/health', (req, res) => {
 });
 
 // Feature routers are mounted here as each module is added:
-// router.use('/auth', require('./authRoutes'));
-// router.use('/users', require('./userRoutes'));
+router.use('/auth', require('./authRoutes'));
+router.use('/users', require('./userRoutes'));
+// Upcoming:
 // ...
 
 module.exports = router;

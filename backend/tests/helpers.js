@@ -7,7 +7,13 @@ Object.assign(process.env, {
   SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
   JWT_SECRET: 'test-secret-test-secret-test-secret-1234',
   FRONTEND_URL: 'http://localhost:5173',
+  BCRYPT_SALT_ROUNDS: '4',
 });
+
+// Replace the real Supabase client with an in-memory fake before anything loads it.
+const fake = require('./fakeSupabase');
+const supabasePath = require.resolve('../src/config/supabase');
+require.cache[supabasePath] = { id: supabasePath, filename: supabasePath, loaded: true, exports: fake.client };
 
 /** Starts the Express app on an ephemeral port and returns a tiny JSON client. */
 async function startApp() {
@@ -26,7 +32,9 @@ async function startApp() {
     return { status: response.status, headers: response.headers, body: await response.json().catch(() => null) };
   }
 
-  return { request, close: () => new Promise((resolve) => server.close(resolve)) };
+  const auth = (token) => ({ authorization: `Bearer ${token}` });
+
+  return { request, auth, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
-module.exports = { startApp };
+module.exports = { startApp, fake };
