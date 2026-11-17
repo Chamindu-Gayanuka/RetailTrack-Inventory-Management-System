@@ -25,7 +25,7 @@ function CategoryForm({open, onClose, category}) {
             setError('');
         }
     }, [open, category, categories.length]);
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!form.name.trim()) {
             setError('Category name is required.');
@@ -35,8 +35,8 @@ function CategoryForm({open, onClose, category}) {
             setError('A category with this name already exists.');
             return;
         }
-        if (category) updateCategory(category.id, form);
-        else addCategory(form);
+        const result = category ? await updateCategory(category.id, form) : await addCategory(form);
+        if (result === false || result === null) return; // the server rejected it; keep the form open
         onClose();
     };
     return (
@@ -148,8 +148,8 @@ export default function Categories({navigate}) {
             <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete category?"
                    subtitle="This action cannot be undone." footer={<>
                 <button className="button button-secondary" onClick={() => setDeleting(null)}>Cancel</button>
-                <button className="button button-danger" onClick={() => {
-                    if (deleting && deleteCategory(deleting.id)) setDeleting(null);
+                <button className="button button-danger" onClick={async () => {
+                    if (deleting && await deleteCategory(deleting.id)) setDeleting(null);
                 }}>Delete category
                 </button>
             </>}>

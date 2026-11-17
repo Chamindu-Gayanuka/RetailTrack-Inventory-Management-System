@@ -54,7 +54,7 @@ function AccessDenied({navigate}) {
 }
 
 export default function App() {
-    const {session, login, logout} = useStore();
+    const {session, login, logout, ready} = useStore();
     const [location, setLocation] = useState(readLocation);
     const route = location.route;
 
@@ -100,6 +100,9 @@ export default function App() {
         login(account, remember);
         navigate('dashboard');
     };
+
+    // Server mode: wait while a saved sign-in is being checked, so the login page does not flash.
+    if (ready === false) return <div className="login-page"><div className="login-background-grid"/></div>;
 
     if (!session) {
         if (route === 'forgot-password') return <ForgotPassword navigate={navigate}/>;

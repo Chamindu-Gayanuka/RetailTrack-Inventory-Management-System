@@ -191,7 +191,8 @@ export interface StoreValue {
     session: Session;
     toasts: ToastMessage[];
     notify: (message: string, type?: string, title?: string) => string;
-    login: (account: AuthAccount, remember?: boolean) => void;
+    ready?: boolean;
+    login: (account: AuthAccount, remember?: boolean) => void | Promise<void>;
     logout: () => void;
 
     [key: string]: any;
