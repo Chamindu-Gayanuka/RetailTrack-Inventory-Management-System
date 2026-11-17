@@ -297,6 +297,53 @@ rpcHandlers.create_return_atomic = ({ p_sale_id, p_reason, p_items, p_user }) =>
   return { id: ret.id, returnNumber: ret.return_number };
 };
 
+// ---- Fakes of the SQL reporting functions (the real ones are exercised against Postgres separately) ----
+const netLines = () =>
+  rows('sale_items').flatMap((si) => {
+    const sale = rows('sales').find((x) => x.id === si.sale_id);
+    if (!sale || sale.status !== 'COMPLETED') return [];
+    const returned = rows('return_items')
+      .filter((ri) => ri.product_id === si.product_id && rows('returns').find((r) => r.id === ri.return_id)?.sale_id === si.sale_id)
+      .reduce((sum, ri) => sum + ri.quantity, 0);
+    const product = rows('products').find((x) => x.id === si.product_id);
+    return [{ sale_id: sale.id, created_at: sale.created_at, processed_by: sale.processed_by, product_id: si.product_id, product_name: si.product_name, sku: si.sku, category_id: product?.category_id, net_qty: si.quantity - returned, unit_price: Number(si.unit_price), unit_cost: Number(si.unit_cost) }];
+  });
+
+const bucketOf = (iso, bucket, tz) => {
+  const d = new Date(new Date(iso).getTime() + tz * 60000);
+  let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  if (bucket === 'week') t -= ((d.getUTCDay() + 6) % 7) * 86400000;
+  if (bucket === 'month') t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  if (bucket === 'year') t = Date.UTC(d.getUTCFullYear(), 0, 1);
+  return new Date(t).toISOString().slice(0, 10);
+};
+
+rpcHandlers.report_sales = ({ p_from, p_to, p_bucket, p_tz, p_category, p_cashier }) => {
+  const lines = netLines().filter((l) => (!p_from || l.created_at >= p_from) && (!p_to || l.created_at < p_to) && (!p_category || l.category_id === p_category) && (!p_cashier || l.processed_by === p_cashier));
+  const sum = (arr, f) => arr.reduce((t, x) => t + f(x), 0);
+  const group = (arr, key) => arr.reduce((m, x) => (m.get(key(x)) ? m.get(key(x)).push(x) : m.set(key(x), [x]), m), new Map());
+  const positive = lines.filter((l) => l.net_qty > 0);
+  return {
+    totals: { revenue: sum(lines, (l) => l.net_qty * l.unit_price), cogs: sum(lines, (l) => l.net_qty * l.unit_cost), units: sum(lines, (l) => l.net_qty), orders: new Set(lines.map((l) => l.sale_id)).size },
+    series: [...group(lines, (l) => bucketOf(l.created_at, p_bucket, p_tz))].map(([bucket, ls]) => ({ bucket, revenue: sum(ls, (l) => l.net_qty * l.unit_price), cost: sum(ls, (l) => l.net_qty * l.unit_cost), orders: new Set(ls.map((l) => l.sale_id)).size })).sort((a, b) => (a.bucket < b.bucket ? -1 : 1)),
+    byProduct: [...group(positive, (l) => l.product_id)].map(([productId, ls]) => ({ productId, name: ls[0].product_name, sku: ls[0].sku, categoryId: ls[0].category_id, units: sum(ls, (l) => l.net_qty), revenue: sum(ls, (l) => l.net_qty * l.unit_price), cost: sum(ls, (l) => l.net_qty * l.unit_cost) })).sort((a, b) => b.revenue - a.revenue),
+    byCategory: [...group(positive, (l) => l.category_id)].map(([categoryId, ls]) => ({ categoryId, revenue: sum(ls, (l) => l.net_qty * l.unit_price), units: sum(ls, (l) => l.net_qty) })).sort((a, b) => b.revenue - a.revenue),
+  };
+};
+
+rpcHandlers.report_movement = ({ p_from, p_to, p_category }) => {
+  const all = netLines();
+  return rows('products')
+    .filter((p) => p.is_active && (!p_category || p.category_id === p_category))
+    .map((p) => {
+      const mine = all.filter((l) => l.product_id === p.id);
+      const inPeriod = mine.filter((l) => (!p_from || l.created_at >= p_from) && (!p_to || l.created_at < p_to));
+      const last = mine.map((l) => l.created_at).sort().at(-1) || null;
+      return { productId: p.id, sku: p.sku, name: p.name, categoryId: p.category_id, stock: p.current_stock, minStock: p.minimum_stock, units: inPeriod.reduce((t, l) => t + l.net_qty, 0), revenue: inPeriod.reduce((t, l) => t + l.net_qty * l.unit_price, 0), lastSoldAt: last };
+    })
+    .sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
+};
+
 const resetCounters = () => {
   saleSeq = 1033;
   returnSeq = 1001;

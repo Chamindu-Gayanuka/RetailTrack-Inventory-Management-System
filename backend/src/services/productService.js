@@ -2,7 +2,7 @@
 
 const supabase = require('../config/supabase');
 const ApiError = require('../utils/ApiError');
-const { unwrap } = require('../utils/db');
+const { unwrap, fetchAll } = require('../utils/db');
 const images = require('./imageService');
 
 const COLUMNS =
@@ -82,7 +82,7 @@ async function nextSku(categoryId) {
     [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ||
     cat.name.replace(/[^a-z]/gi, '').slice(0, 2).toUpperCase().padEnd(2, 'R');
 
-  const all = unwrap(await supabase.from('products').select('sku'));
+  const all = await fetchAll(() => supabase.from('products').select('sku').order('id'));
   const taken = new Set(all.map((r) => r.sku));
   let n = all.reduce((max, { sku }) => {
     const m = new RegExp(`^${prefix}-(\\d+)$`).exec(sku);

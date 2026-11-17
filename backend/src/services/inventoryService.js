@@ -1,7 +1,7 @@
 'use strict';
 
 const supabase = require('../config/supabase');
-const { unwrap } = require('../utils/db');
+const { unwrap, fetchAll } = require('../utils/db');
 
 const TX_COLUMNS =
   'id, product_id, transaction_type, quantity_change, previous_quantity, new_quantity, reason, note, performed_by, related_sale_id, related_return_id, created_at';
@@ -15,8 +15,8 @@ function alertSeverity(stock, minStock) {
 const suggestedRestock = (stock, minStock) => Math.max(minStock * 2 - stock, minStock);
 
 async function summary() {
-  const rows = unwrap(
-    await supabase.from('products').select('current_stock, cost_price, stock_status').eq('is_active', true),
+  const rows = await fetchAll(() =>
+    supabase.from('products').select('current_stock, cost_price, stock_status').eq('is_active', true),
   );
   return {
     activeProducts: rows.length,
@@ -29,12 +29,13 @@ async function summary() {
 
 /** Active products at or below their minimum, most urgent first. */
 async function alerts({ severity } = {}) {
-  const rows = unwrap(
-    await supabase
+  const rows = await fetchAll(() =>
+    supabase
       .from('products')
       .select('id, sku, name, category_id, current_stock, minimum_stock, image_url, updated_at')
       .eq('is_active', true)
-      .in('stock_status', ['LOW_STOCK', 'OUT_OF_STOCK']),
+      .in('stock_status', ['LOW_STOCK', 'OUT_OF_STOCK'])
+      .order('id'),
   );
   return rows
     .map((r) => ({

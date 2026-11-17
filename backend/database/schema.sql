@@ -438,6 +438,99 @@ language sql security definer set search_path = public as $$
   update otp_codes set attempts = attempts + 1 where id = p_otp_id
 $$;
 
+-- ---------- Reporting ---------------------------------------------------------------------
+-- Aggregation happens in the database (the API is limited to 1000 rows per request), and
+-- always on NET figures: quantities returned by customers are subtracted from what was sold.
+
+-- One row per sold product line of a COMPLETED sale, with the net quantity after returns.
+-- Price and cost are the snapshots taken at the time of sale.
+create or replace view sale_lines_net with (security_invoker = true) as
+select s.id as sale_id, s.created_at, s.processed_by,
+       si.product_id, si.product_name, si.sku, p.category_id,
+       si.quantity - coalesce((
+         select sum(ri.quantity) from return_items ri join returns rt on rt.id = ri.return_id
+         where rt.sale_id = s.id and ri.product_id = si.product_id), 0) as net_qty,
+       si.unit_price, si.unit_cost
+from sales s
+join sale_items si on si.sale_id = s.id
+left join products p on p.id = si.product_id
+where s.status = 'COMPLETED';
+
+-- Sales totals, time series, and per-product / per-category breakdown for a period.
+--   p_from inclusive, p_to exclusive (NULL = unbounded); p_bucket: day | week | month | year
+--   p_tz = minutes east of UTC used to decide which local day a sale belongs to (Sri Lanka = 330)
+--   p_category / p_cashier optional filters
+create or replace function report_sales(
+  p_from timestamptz, p_to timestamptz, p_bucket text, p_tz integer,
+  p_category uuid default null, p_cashier uuid default null
+) returns jsonb language plpgsql stable set search_path = public as $$
+begin
+  if p_bucket not in ('day', 'week', 'month', 'year') then
+    raise exception 'Invalid bucket: %', p_bucket;
+  end if;
+  return (
+    with lines as (
+      select * from sale_lines_net l
+      where (p_from is null or l.created_at >= p_from)
+        and (p_to is null or l.created_at < p_to)
+        and (p_category is null or l.category_id = p_category)
+        and (p_cashier is null or l.processed_by = p_cashier)
+    ),
+    totals as (
+      select coalesce(sum(net_qty * unit_price), 0) as revenue,
+             coalesce(sum(net_qty * unit_cost), 0) as cogs,
+             coalesce(sum(net_qty), 0)::integer as units,
+             count(distinct sale_id)::integer as orders
+      from lines
+    ),
+    series as (
+      select to_char(date_trunc(p_bucket, (created_at at time zone 'UTC') + make_interval(mins => p_tz)), 'YYYY-MM-DD') as bucket,
+             sum(net_qty * unit_price) as revenue,
+             sum(net_qty * unit_cost) as cost,
+             count(distinct sale_id)::integer as orders
+      from lines group by 1
+    ),
+    by_product as (
+      select product_id as "productId", max(product_name) as name, max(sku) as sku,
+             category_id as "categoryId", sum(net_qty)::integer as units,
+             sum(net_qty * unit_price) as revenue, sum(net_qty * unit_cost) as cost
+      from lines where net_qty > 0 group by product_id, category_id
+    ),
+    by_category as (
+      select category_id as "categoryId", sum(net_qty * unit_price) as revenue, sum(net_qty)::integer as units
+      from lines where net_qty > 0 group by category_id
+    )
+    select jsonb_build_object(
+      'totals', (select to_jsonb(t) from totals t),
+      'series', coalesce((select jsonb_agg(to_jsonb(s) order by s.bucket) from series s), '[]'::jsonb),
+      'byProduct', coalesce((select jsonb_agg(to_jsonb(b) order by b.revenue desc) from by_product b), '[]'::jsonb),
+      'byCategory', coalesce((select jsonb_agg(to_jsonb(c) order by c.revenue desc) from by_category c), '[]'::jsonb)
+    )
+  );
+end $$;
+
+-- Units sold per active product in a period (for fast / slow / non-moving analysis).
+create or replace function report_movement(
+  p_from timestamptz, p_to timestamptz, p_category uuid default null
+) returns jsonb language sql stable set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(r) order by r.units desc, r.name), '[]'::jsonb)
+  from (
+    select p.id as "productId", p.sku, p.name, p.category_id as "categoryId",
+           p.current_stock as stock, p.minimum_stock as "minStock",
+           coalesce(m.units, 0)::integer as units,
+           coalesce(m.revenue, 0) as revenue,
+           (select max(l.created_at) from sale_lines_net l where l.product_id = p.id) as "lastSoldAt"
+    from products p
+    left join (
+      select product_id, sum(net_qty) as units, sum(net_qty * unit_price) as revenue
+      from sale_lines_net
+      where (p_from is null or created_at >= p_from) and (p_to is null or created_at < p_to)
+      group by product_id
+    ) m on m.product_id = p.id
+    where p.is_active and (p_category is null or p.category_id = p_category)
+  ) r
+$$;
+
 -- ---------- Security: lock everything down to the service role ---------------------------
 do $$
 declare t text;
