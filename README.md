@@ -2,8 +2,8 @@
 
 RetailTrack is an **Inventory Management System** for small retail shops (built for the *Ape Kade* store). It manages products, stock, sales, returns, purchase orders and reports, with separate access for **Administrators, Inventory Staff and Cashiers**.
 
-> ⚠️ **Security notice - read before running the frontend.**
-> `frontend/init` (run by `npm run dev` and `npm run build` through `node init`) and `frontend/vite.config.js` contain a large block of obfuscated code that has nothing to do with this application. Treat it as malicious: **do not run `npm run dev`, `npm run build` or `node init` in `frontend/`** until it has been removed and reviewed by the team, and rotate any credentials that were on a machine where it ran. The same file was removed from `backend/`.
+> ⚠️ **Security notice.**
+> `frontend/init` and `frontend/vite.config.js` used to contain a large block of obfuscated code unrelated to this application (added in commit `3c778d9`). It has been removed from the working copy, but **it is still in the git history** and in any older clone. Do not run `npm run dev`, `npm run build` or `node init` from an old checkout, and rotate any credentials on a machine where it ran. Ask the author of that commit what it was.
 
 ## 🚀 Features
 
@@ -136,7 +136,22 @@ npm test      # 63 tests, no database or network needed
 
 ### 4. Frontend
 
-The frontend currently runs on browser-stored demo data and is not connected to the API yet. See the security notice above before installing or starting it.
+The frontend talks only to the backend API; all data lives in the database.
+
+```bash
+cd frontend
+npm install --ignore-scripts
+npx vite              # http://localhost:5173
+```
+
+* The API address comes from `VITE_API_URL` (see `frontend/.env.example`); it defaults to `http://localhost:5000/api`.
+* The backend must be running, and `FRONTEND_URL` in `backend/.env` must include `http://localhost:5173` (it does by default).
+* Sign in with the administrator created from `ADMIN_*` in `backend/.env`. That administrator can then create the cashier and inventory-staff accounts on the **Users** page; each new user is emailed a temporary password (printed in the backend console while SMTP is not configured).
+* Use `npx vite` rather than `npm run dev` until the `node init` step in `package.json` is removed.
+
+### Running everything locally without a cloud account
+
+`backend/supabase/` and `backend/database/` let you run a full local Supabase with Docker: `cd backend && npx supabase start`. The schema and seed data are applied automatically. Copy the printed API URL and `service_role` key into `backend/.env`.
 
 ## 🔌 API Overview
 
@@ -170,7 +185,7 @@ Create branch -> Develop -> Test (npm test) -> Commit -> Push -> Pull request ->
 
 ## 📌 Project Status
 
-In development. The backend API is complete and tested; connecting the frontend to it is the next step.
+The backend API is complete and tested (63 automated tests, plus a 63-request Postman collection), and the frontend is connected to it. Remaining: deploy to a hosted Supabase project and production hardening.
 
 ## 👥 Development Team
 
