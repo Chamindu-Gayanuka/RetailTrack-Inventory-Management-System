@@ -543,14 +543,14 @@ declare
   c_users integer; c_categories integer; c_products integer; c_sales integer;
   c_returns integer; c_transactions integer; c_orders integer;
 begin
-  delete from inventory_transactions;
-  delete from return_items;
-  delete from returns;
-  delete from sale_items;
-  delete from sales;
-  delete from purchase_orders;
-  delete from products;
-  delete from categories;
+  delete from inventory_transactions where true;
+  delete from return_items where true;
+  delete from returns where true;
+  delete from sale_items where true;
+  delete from sales where true;
+  delete from purchase_orders where true;
+  delete from products where true;
+  delete from categories where true;
 
   insert into users (id, full_name, email, phone, role, is_active, email_verified, password_hash)
   select x.id, x.full_name, x.email, x.phone, x.role::user_role, x.is_active, x.email_verified, x.password_hash

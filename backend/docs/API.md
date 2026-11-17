@@ -255,4 +255,4 @@ Roles: **A** only.
 | 502 / 503 | Optional service failed | `The image could not be uploaded. Please try again.` |
 | 500 | Unexpected; details are only in the server log | `Internal server error.` |
 
-Rate limits (per IP, per 15 minutes): 600 requests overall, 30 authentication attempts, 10 code requests or checks.
+Rate limits (per IP, per 15 minutes): 3000 requests overall, 30 authentication attempts, 10 code requests or checks.
