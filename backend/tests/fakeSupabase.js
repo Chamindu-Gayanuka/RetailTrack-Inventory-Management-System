@@ -33,6 +33,11 @@ const DEFAULTS = {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }),
+  store_settings: () => ({
+    store_name: 'Ape Kade', location: '', address: '', phone: '', email: '', currency: 'Sri Lankan Rupee (LKR)',
+    low_stock_alerts: true, sale_notifications: true, weekly_summary: true, email_alerts: false, updated_at: new Date().toISOString(),
+  }),
+  purchase_orders: () => ({ id: crypto.randomUUID(), po_number: `PO-${String(poSeq++).padStart(6, '0')}`, status: 'CREATED', created_at: new Date().toISOString() }),
   otp_codes: () => ({ id: crypto.randomUUID(), attempts: 0, consumed_at: null, created_at: new Date().toISOString() }),
 };
 
@@ -46,6 +51,7 @@ const derive = (table, row) => {
   return row;
 };
 
+let poSeq = 1;
 const tables = {};
 const rpcHandlers = {};
 const fail = (code, message) => ({ __error: { code, message } });
@@ -344,9 +350,18 @@ rpcHandlers.report_movement = ({ p_from, p_to, p_category }) => {
     .sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
 };
 
+// The real function is exercised against Postgres separately; here we only capture what the API sends.
+const imports = [];
+rpcHandlers.import_backup = ({ p_data }) => {
+  imports.push(p_data);
+  return { products: p_data.products.length, sales: p_data.sales.length };
+};
+
 const resetCounters = () => {
   saleSeq = 1033;
   returnSeq = 1001;
+  poSeq = 1;
+  imports.length = 0;
 };
 
-module.exports = { client, tables, rows, reset, rpcHandlers };
+module.exports = { client, tables, rows, reset, rpcHandlers, imports };
