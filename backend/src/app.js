@@ -26,6 +26,9 @@ app.use(
     credentials: true,
   }),
 );
+// Product images arrive as base64 data URLs, so the product routes accept a larger body.
+// The first parser to run wins; the global one below then skips an already-parsed body.
+app.use('/api/products', express.json({ limit: '4mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiLimiter, routes);
 app.use(notFound);
