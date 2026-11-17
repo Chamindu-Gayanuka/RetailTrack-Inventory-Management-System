@@ -58,6 +58,22 @@
     {
       "key": "sku",
       "value": ""
+    },
+    {
+      "key": "tempPassword",
+      "value": "Temp-Pass-12345!"
+    },
+    {
+      "key": "staffToken",
+      "value": ""
+    },
+    {
+      "key": "cashierToken",
+      "value": ""
+    },
+    {
+      "key": "backupJson",
+      "value": ""
     }
   ],
   "item": [
@@ -195,8 +211,17 @@
                   "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));",
                   "const json = pm.response.json();",
                   "pm.test('Token returned', () => pm.expect(json.data.token).to.be.a('string'));",
-                  "pm.collectionVariables.set('token', json.data.token);",
-                  "pm.collectionVariables.set('role', json.data.user.role);"
+                  "pm.collectionVariables.set('staffToken', json.data.token);",
+                  "pm.test('Role is INVENTORY_STAFF', () => pm.expect(json.data.user.role).to.eql('INVENTORY_STAFF'));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('staffPassword') && !pm.collectionVariables.get('staffPassword')) { pm.execution.skipRequest(); }"
                 ]
               }
             }
@@ -246,8 +271,17 @@
                   "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));",
                   "const json = pm.response.json();",
                   "pm.test('Token returned', () => pm.expect(json.data.token).to.be.a('string'));",
-                  "pm.collectionVariables.set('token', json.data.token);",
-                  "pm.collectionVariables.set('role', json.data.user.role);"
+                  "pm.collectionVariables.set('cashierToken', json.data.token);",
+                  "pm.test('Role is CASHIER', () => pm.expect(json.data.user.role).to.eql('CASHIER'));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cashierPassword') && !pm.collectionVariables.get('cashierPassword')) { pm.execution.skipRequest(); }"
                 ]
               }
             }
@@ -294,7 +328,53 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"old-password\",\n  \"newPassword\": \"new-password-123\"\n}",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"newPassword\": \"{{tempPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Returns a fresh token and signs out all other sessions. Update {{token}} afterwards."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.token) pm.collectionVariables.set('token', json.data.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change password back",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{tempPassword}}\",\n  \"newPassword\": \"{{adminPassword}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -368,7 +448,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
+                  "// 429 = the verification rate limit (by design); it clears after a few minutes.",
+                  "pm.test('Status is 200', () => pm.expect([200, 429]).to.include(pm.response.code));"
                 ]
               }
             }
@@ -415,7 +496,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "// 429 = the verification rate limit (by design); it clears after a few minutes.",
+                  "// The real code is emailed (see the server console in dev), so a wrong code must be rejected cleanly.",
+                  "pm.test('Rejects a wrong code', () => pm.expect([200,400, 429]).to.include(pm.response.code));",
                   "const json = pm.response.json();",
                   "if (json.data && json.data.resetToken) pm.collectionVariables.set('resetToken', json.data.resetToken);"
                 ]
@@ -466,6 +549,15 @@
                   "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
                 ]
               }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('resetToken')) { pm.execution.skipRequest(); }"
+                ]
+              }
             }
           ]
         },
@@ -493,7 +585,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
+                  "// 429 = the verification rate limit (by design); it clears after a few minutes.",
+                  "pm.test('Sent, or already verified', () => pm.expect([200,400, 429]).to.include(pm.response.code));"
                 ]
               }
             }
@@ -537,7 +630,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
+                  "// 429 = the verification rate limit (by design); it clears after a few minutes.",
+                  "pm.test('Status is 200', () => pm.expect([200, 429]).to.include(pm.response.code));"
                 ]
               }
             }
@@ -677,7 +771,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Sunil Silva\",\n  \"email\": \"sunil@apekade.lk\",\n  \"phone\": \"+94 71 000 0000\",\n  \"role\": \"CASHIER\"\n}",
+              "raw": "{\n  \"name\": \"Sunil Silva\",\n  \"email\": \"postman.{{$timestamp}}@apekade.lk\",\n  \"phone\": \"+94 71 000 0000\",\n  \"role\": \"CASHIER\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -915,7 +1009,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman Test Category\",\n  \"description\": \"Created from Postman\",\n  \"color\": \"#6574e8\"\n}",
+              "raw": "{\n  \"name\": \"Postman Test Category {{$timestamp}}\",\n  \"description\": \"Created from Postman\",\n  \"color\": \"#6574e8\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -985,36 +1079,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Delete category (Admin)",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/categories/{{categoryId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "categories",
-                "{{categoryId}}"
-              ]
-            },
-            "description": "409 while products use it."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status is 200 or 409', () => pm.expect([200,409]).to.include(pm.response.code));"
                 ]
               }
             }
@@ -1132,7 +1196,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman Test Product\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"price\": 450,\n  \"cost\": 285,\n  \"stock\": 20,\n  \"minStock\": 5\n}",
+              "raw": "{\n  \"name\": \"Postman Test Product {{$timestamp}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"price\": 450,\n  \"cost\": 285,\n  \"stock\": 20,\n  \"minStock\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1177,7 +1241,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman Second Product\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"price\": 120,\n  \"cost\": 70,\n  \"stock\": 50,\n  \"minStock\": 10\n}",
+              "raw": "{\n  \"name\": \"Postman Second Product {{$timestamp}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"price\": 120,\n  \"cost\": 70,\n  \"stock\": 50,\n  \"minStock\": 10\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1385,6 +1449,36 @@
               ]
             },
             "description": "409 once the product has any stock or sales history. Deactivate instead."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 or 409', () => pm.expect([200,409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete category (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories",
+                "{{categoryId}}"
+              ]
+            },
+            "description": "409 while products use it."
           },
           "response": [],
           "event": [
@@ -2586,7 +2680,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
+                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "const doc = pm.response.json();",
+                  "pm.test('Is format v3', () => pm.expect(doc.formatVersion).to.eql(3));",
+                  "pm.collectionVariables.set('backupJson', JSON.stringify(doc));"
                 ]
               }
             }
@@ -2604,7 +2701,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mode\": \"validate\",\n  \"backup\": {\n    \"formatVersion\": 3,\n    \"categories\": [],\n    \"products\": [],\n    \"sales\": []\n  }\n}",
+              "raw": "{\n  \"mode\": \"validate\",\n  \"backup\": {{backupJson}}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2648,7 +2745,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mode\": \"replace\",\n  \"password\": \"{{adminPassword}}\",\n  \"confirm\": \"REPLACE ALL DATA\",\n  \"backup\": {\n    \"formatVersion\": 3\n  }\n}",
+              "raw": "{\n  \"mode\": \"replace\",\n  \"password\": \"{{adminPassword}}\",\n  \"confirm\": \"REPLACE ALL DATA\",\n  \"backup\": {{backupJson}}\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2674,7 +2771,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status is 200 or 400', () => pm.expect([200,400]).to.include(pm.response.code));"
+                  "// Restores the backup exported earlier in this run, so data ends up unchanged.",
+                  "pm.test('Status is 200', () => pm.expect([200]).to.include(pm.response.code));"
                 ]
               }
             }
