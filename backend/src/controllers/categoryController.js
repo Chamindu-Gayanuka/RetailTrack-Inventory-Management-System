@@ -3,7 +3,7 @@
 const supabase = require('../config/supabase');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
-const { unwrap } = require('../utils/db');
+const { unwrap, fetchAll } = require('../utils/db');
 
 const COLUMNS = 'id, name, description, color, created_at, updated_at';
 
@@ -28,7 +28,7 @@ async function assertNameFree(name, exceptId) {
 
 exports.list = asyncHandler(async (req, res) => {
   const categories = unwrap(await supabase.from('categories').select(COLUMNS).order('name', { ascending: true }));
-  const products = unwrap(await supabase.from('products').select('category_id'));
+  const products = await fetchAll(() => supabase.from('products').select('category_id').order('id'));
   const counts = new Map();
   for (const p of products) counts.set(p.category_id, (counts.get(p.category_id) || 0) + 1);
   ok(res, categories.map((c) => toPublic(c, counts.get(c.id) || 0)));
