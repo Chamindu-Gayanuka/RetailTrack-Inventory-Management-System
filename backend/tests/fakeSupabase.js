@@ -48,6 +48,7 @@ const derive = (table, row) => {
 
 const tables = {};
 const rpcHandlers = {};
+const fail = (code, message) => ({ __error: { code, message } });
 const reset = () => {
   for (const k of Object.keys(tables)) delete tables[k];
 };
@@ -98,6 +99,8 @@ class Query {
     return this;
   }
   range(from, to) { this.rangeFrom = from; this.rangeTo = to; return this; }
+  gte(c, v) { this.filters.push((r) => r[c] >= v); return this; }
+  lte(c, v) { this.filters.push((r) => r[c] <= v); return this; }
   gt(c, v) { this.filters.push((r) => r[c] > v); return this; }
   order(c, { ascending = true } = {}) { this.sort = { c, ascending }; return this; }
   limit(n) { this.max = n; return this; }
@@ -163,7 +166,10 @@ class Query {
 const client = {
   from: (table) => new Query(table),
   rpc: async (name, args) => {
-    if (rpcHandlers[name]) return { data: rpcHandlers[name](args), error: null };
+    if (rpcHandlers[name]) {
+      const out = rpcHandlers[name](args);
+      return out && out.__error ? { data: null, error: out.__error } : { data: out, error: null };
+    }
     return { data: null, error: { code: '42883', message: `function ${name} not mocked` } };
   },
 };
@@ -176,10 +182,22 @@ rpcHandlers.increment_otp_attempts = ({ p_otp_id }) => {
 
 rpcHandlers.add_stock_atomic = ({ p_product_id, p_quantity, p_note, p_user }) => {
   const product = rows('products').find((r) => r.id === p_product_id);
+  if (!product) return fail('P0002', 'Product not found');
   const previous = product.current_stock;
   derive('products', Object.assign(product, { current_stock: previous + p_quantity }));
-  rows('inventory_transactions').push({ id: crypto.randomUUID(), product_id: p_product_id, transaction_type: 'STOCK_ADDED', quantity_change: p_quantity, previous_quantity: previous, new_quantity: previous + p_quantity, note: p_note, performed_by: p_user });
+  rows('inventory_transactions').push({ id: crypto.randomUUID(), product_id: p_product_id, transaction_type: 'STOCK_ADDED', quantity_change: p_quantity, previous_quantity: previous, new_quantity: previous + p_quantity, note: p_note, performed_by: p_user, created_at: new Date().toISOString() });
   return { productId: p_product_id, previousQuantity: previous, newQuantity: previous + p_quantity };
+};
+
+rpcHandlers.adjust_stock_atomic = ({ p_product_id, p_change, p_reason, p_user }) => {
+  const product = rows('products').find((r) => r.id === p_product_id);
+  if (!product) return fail('P0002', 'Product not found');
+  if (!p_reason || !p_reason.trim()) return fail('P0001', 'A reason is required for stock adjustments');
+  const previous = product.current_stock;
+  if (previous + p_change < 0) return fail('P0001', `Stock cannot go below zero (current stock: ${previous})`);
+  derive('products', Object.assign(product, { current_stock: previous + p_change }));
+  rows('inventory_transactions').push({ id: crypto.randomUUID(), product_id: p_product_id, transaction_type: 'ADJUSTMENT', quantity_change: p_change, previous_quantity: previous, new_quantity: previous + p_change, reason: p_reason, performed_by: p_user, created_at: new Date().toISOString() });
+  return { productId: p_product_id, previousQuantity: previous, newQuantity: previous + p_change };
 };
 
 module.exports = { client, tables, rows, reset, rpcHandlers };
