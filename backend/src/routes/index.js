@@ -19,7 +19,8 @@ router.use('/sales', require('./salesRoutes'));
 router.use('/returns', require('./returnRoutes'));
 router.use('/dashboard', require('./dashboardRoutes'));
 router.use('/reports', require('./reportRoutes'));
-// Upcoming:
-// ...
+router.use('/purchase-orders', require('./purchaseOrderRoutes'));
+router.use('/settings', require('./settingsRoutes'));
+router.use('/backup', require('./backupRoutes'));
 
 module.exports = router;

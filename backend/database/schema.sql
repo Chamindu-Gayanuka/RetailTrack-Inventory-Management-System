@@ -531,6 +531,124 @@ create or replace function report_movement(
   ) r
 $$;
 
+-- ---------- Backup restore ---------------------------------------------------------------
+-- Replaces ALL business data (categories, products, sales, returns, stock history, purchase
+-- orders, store settings) with the contents of a prepared backup, in ONE transaction: if
+-- anything fails, nothing changes. User accounts and OTP codes are never deleted; accounts
+-- that exist only in the backup are added. The API validates and prepares p_data (fresh ids,
+-- resolved references, recomputed totals) - this function only loads it.
+create or replace function import_backup(p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  c_users integer; c_categories integer; c_products integer; c_sales integer;
+  c_returns integer; c_transactions integer; c_orders integer;
+begin
+  delete from inventory_transactions;
+  delete from return_items;
+  delete from returns;
+  delete from sale_items;
+  delete from sales;
+  delete from purchase_orders;
+  delete from products;
+  delete from categories;
+
+  insert into users (id, full_name, email, phone, role, is_active, email_verified, password_hash)
+  select x.id, x.full_name, x.email, x.phone, x.role::user_role, x.is_active, x.email_verified, x.password_hash
+  from jsonb_to_recordset(coalesce(p_data -> 'users', '[]')) as x(
+    id uuid, full_name text, email text, phone text, role text, is_active boolean, email_verified boolean, password_hash text);
+  get diagnostics c_users = row_count;
+
+  insert into categories (id, name, description, color)
+  select x.id, x.name, x.description, x.color
+  from jsonb_to_recordset(coalesce(p_data -> 'categories', '[]')) as x(id uuid, name text, description text, color text);
+  get diagnostics c_categories = row_count;
+
+  insert into products (id, sku, name, category_id, selling_price, cost_price, current_stock, minimum_stock,
+                        image_url, image_public_id, is_active, created_at)
+  select x.id, x.sku, x.name, x.category_id, x.selling_price, x.cost_price, x.current_stock, x.minimum_stock,
+         x.image_url, x.image_public_id, x.is_active, coalesce(x.created_at, now())
+  from jsonb_to_recordset(coalesce(p_data -> 'products', '[]')) as x(
+    id uuid, sku text, name text, category_id uuid, selling_price numeric, cost_price numeric, current_stock integer,
+    minimum_stock integer, image_url text, image_public_id text, is_active boolean, created_at timestamptz);
+  get diagnostics c_products = row_count;
+
+  insert into sales (id, sale_number, customer_name, payment_method, status, total_amount, item_count,
+                     refunded_total, return_status, processed_by, completed_at, created_at)
+  select x.id, x.sale_number, x.customer_name, x.payment_method::payment_method, x.status::sale_status, x.total_amount,
+         x.item_count, x.refunded_total, x.return_status, x.processed_by, x.completed_at, coalesce(x.created_at, now())
+  from jsonb_to_recordset(coalesce(p_data -> 'sales', '[]')) as x(
+    id uuid, sale_number text, customer_name text, payment_method text, status text, total_amount numeric,
+    item_count integer, refunded_total numeric, return_status text, processed_by uuid, completed_at timestamptz,
+    created_at timestamptz);
+  get diagnostics c_sales = row_count;
+
+  insert into sale_items (sale_id, product_id, product_name, sku, quantity, unit_price, unit_cost, subtotal)
+  select x.sale_id, x.product_id, x.product_name, x.sku, x.quantity, x.unit_price, x.unit_cost, x.subtotal
+  from jsonb_to_recordset(coalesce(p_data -> 'sale_items', '[]')) as x(
+    sale_id uuid, product_id uuid, product_name text, sku text, quantity integer, unit_price numeric,
+    unit_cost numeric, subtotal numeric);
+
+  insert into returns (id, return_number, sale_id, reason, total_amount, processed_by, created_at)
+  select x.id, x.return_number, x.sale_id, x.reason, x.total_amount, x.processed_by, coalesce(x.created_at, now())
+  from jsonb_to_recordset(coalesce(p_data -> 'returns', '[]')) as x(
+    id uuid, return_number text, sale_id uuid, reason text, total_amount numeric, processed_by uuid, created_at timestamptz);
+  get diagnostics c_returns = row_count;
+
+  insert into return_items (return_id, product_id, product_name, sku, quantity, unit_price, unit_cost, subtotal)
+  select x.return_id, x.product_id, x.product_name, x.sku, x.quantity, x.unit_price, x.unit_cost, x.subtotal
+  from jsonb_to_recordset(coalesce(p_data -> 'return_items', '[]')) as x(
+    return_id uuid, product_id uuid, product_name text, sku text, quantity integer, unit_price numeric,
+    unit_cost numeric, subtotal numeric);
+
+  insert into inventory_transactions (id, product_id, transaction_type, quantity_change, previous_quantity, new_quantity,
+                                      reason, note, performed_by, related_sale_id, related_return_id, created_at)
+  select x.id, x.product_id, x.transaction_type::inventory_tx_type, x.quantity_change, x.previous_quantity, x.new_quantity,
+         x.reason, x.note, x.performed_by, x.related_sale_id, x.related_return_id, coalesce(x.created_at, now())
+  from jsonb_to_recordset(coalesce(p_data -> 'inventory_transactions', '[]')) as x(
+    id uuid, product_id uuid, transaction_type text, quantity_change integer, previous_quantity integer,
+    new_quantity integer, reason text, note text, performed_by uuid, related_sale_id uuid, related_return_id uuid,
+    created_at timestamptz);
+  get diagnostics c_transactions = row_count;
+
+  insert into purchase_orders (id, po_number, product_id, supplier, quantity, unit_cost, stock_at_creation,
+                               minimum_at_creation, created_by, created_at)
+  select x.id, x.po_number, x.product_id, x.supplier, x.quantity, x.unit_cost, x.stock_at_creation,
+         x.minimum_at_creation, x.created_by, coalesce(x.created_at, now())
+  from jsonb_to_recordset(coalesce(p_data -> 'purchase_orders', '[]')) as x(
+    id uuid, po_number text, product_id uuid, supplier text, quantity integer, unit_cost numeric,
+    stock_at_creation integer, minimum_at_creation integer, created_by uuid, created_at timestamptz);
+  get diagnostics c_orders = row_count;
+
+  if p_data ? 'settings' and jsonb_typeof(p_data -> 'settings') = 'object' then
+    update store_settings s set
+      store_name = coalesce(x.store_name, s.store_name),
+      location = coalesce(x.location, s.location),
+      address = coalesce(x.address, s.address),
+      phone = coalesce(x.phone, s.phone),
+      email = coalesce(x.email, s.email),
+      currency = coalesce(x.currency, s.currency),
+      low_stock_alerts = coalesce(x.low_stock_alerts, s.low_stock_alerts),
+      sale_notifications = coalesce(x.sale_notifications, s.sale_notifications),
+      weekly_summary = coalesce(x.weekly_summary, s.weekly_summary),
+      email_alerts = coalesce(x.email_alerts, s.email_alerts)
+    from jsonb_to_record(p_data -> 'settings') as x(
+      store_name text, location text, address text, phone text, email text, currency text,
+      low_stock_alerts boolean, sale_notifications boolean, weekly_summary boolean, email_alerts boolean)
+    where s.id = 1;
+  end if;
+
+  -- Continue document numbering after the highest imported number.
+  perform setval('sale_number_seq',
+    greatest((select coalesce(max(substring(sale_number from '\d+$')::integer), 0) from sales) + 1, 1033), false);
+  perform setval('return_number_seq',
+    greatest((select coalesce(max(substring(return_number from '\d+$')::integer), 0) from returns) + 1, 1001), false);
+  perform setval('purchase_order_number_seq',
+    greatest((select coalesce(max(substring(po_number from '\d+$')::integer), 0) from purchase_orders) + 1, 1), false);
+
+  return jsonb_build_object('usersAdded', c_users, 'categories', c_categories, 'products', c_products, 'sales', c_sales,
+                            'returns', c_returns, 'inventoryTransactions', c_transactions, 'purchaseOrders', c_orders);
+end $$;
+
 -- ---------- Security: lock everything down to the service role ---------------------------
 do $$
 declare t text;
