@@ -14,6 +14,7 @@ test('Postgres errors map to client-safe API errors', () => {
   assert.equal(normalizeError({ code: '23505', message: 'duplicate key ...' }).statusCode, 409);
   assert.equal(normalizeError({ code: '23503', message: 'fk ...' }).statusCode, 409);
   assert.equal(normalizeError({ code: '23514', message: 'check ...' }).statusCode, 400);
+  assert.equal(normalizeError({ code: 'P0002', message: 'Product not found' }).statusCode, 404);
   assert.equal(normalizeError({ code: 'PGRST116', message: 'no rows' }).statusCode, 404);
 });
 

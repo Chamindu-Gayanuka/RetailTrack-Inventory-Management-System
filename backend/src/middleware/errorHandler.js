@@ -30,6 +30,7 @@ function normalizeError(err) {
     case '22P02':
     case '22003':
       return ApiError.badRequest('The submitted data is not valid.');
+    case 'P0002': // our SQL functions raise this for "not found"
     case 'PGRST116':
       return ApiError.notFound();
     default:
