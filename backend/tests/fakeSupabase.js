@@ -51,6 +51,7 @@ const rpcHandlers = {};
 const fail = (code, message) => ({ __error: { code, message } });
 const reset = () => {
   for (const k of Object.keys(tables)) delete tables[k];
+  resetCounters();
 };
 const rows = (name) => (tables[name] ||= []);
 
@@ -198,6 +199,107 @@ rpcHandlers.adjust_stock_atomic = ({ p_product_id, p_change, p_reason, p_user })
   derive('products', Object.assign(product, { current_stock: previous + p_change }));
   rows('inventory_transactions').push({ id: crypto.randomUUID(), product_id: p_product_id, transaction_type: 'ADJUSTMENT', quantity_change: p_change, previous_quantity: previous, new_quantity: previous + p_change, reason: p_reason, performed_by: p_user, created_at: new Date().toISOString() });
   return { productId: p_product_id, previousQuantity: previous, newQuantity: previous + p_change };
+};
+
+// ---- Fakes of the SQL sale/return functions (the real ones are exercised against Postgres separately) ----
+let saleSeq = 1033;
+let returnSeq = 1001;
+const now = () => new Date().toISOString();
+const aggregate = (items) => {
+  const m = new Map();
+  for (const it of items) m.set(it.productId, (m.get(it.productId) || 0) + Number(it.quantity));
+  return [...m.entries()].map(([productId, qty]) => ({ productId, qty }));
+};
+const stockTx = (product, change, type, user, extra = {}) =>
+  rows('inventory_transactions').push({ id: crypto.randomUUID(), product_id: product.id, transaction_type: type, quantity_change: change, previous_quantity: product.current_stock - change, new_quantity: product.current_stock, performed_by: user, created_at: now(), ...extra });
+
+rpcHandlers.create_sale_atomic = ({ p_items, p_customer, p_payment, p_status, p_user }) => {
+  if (!p_items.length) return fail('P0001', 'At least one item is required');
+  const lines = aggregate(p_items);
+  const checked = [];
+  for (const { productId, qty } of lines) {
+    const product = rows('products').find((r) => r.id === productId);
+    if (!product || !product.is_active) return fail('P0001', 'Product not found or inactive');
+    if (product.current_stock < qty) return fail('P0001', `Insufficient stock for ${product.name} (available: ${product.current_stock})`);
+    checked.push({ product, qty });
+  }
+  const sale = { id: crypto.randomUUID(), sale_number: `SALE-${saleSeq++}`, customer_name: p_customer || 'Walk-in Customer', payment_method: p_payment, status: p_status, total_amount: 0, item_count: 0, refunded_total: 0, return_status: null, processed_by: p_user, completed_at: p_status === 'COMPLETED' ? now() : null, created_at: now() };
+  for (const { product, qty } of checked) {
+    const subtotal = Number(product.selling_price) * qty;
+    rows('sale_items').push({ id: crypto.randomUUID(), sale_id: sale.id, product_id: product.id, product_name: product.name, sku: product.sku, quantity: qty, unit_price: product.selling_price, unit_cost: product.cost_price, subtotal });
+    sale.total_amount += subtotal;
+    sale.item_count += qty;
+    if (p_status === 'COMPLETED') {
+      derive('products', Object.assign(product, { current_stock: product.current_stock - qty }));
+      stockTx(product, -qty, 'SALE_DEDUCTION', p_user, { note: sale.sale_number, related_sale_id: sale.id });
+    }
+  }
+  rows('sales').push(sale);
+  return { id: sale.id, saleNumber: sale.sale_number, status: p_status };
+};
+
+rpcHandlers.complete_sale_atomic = ({ p_sale_id, p_user }) => {
+  const sale = rows('sales').find((r) => r.id === p_sale_id);
+  if (!sale) return fail('P0002', 'Sale not found');
+  if (sale.status !== 'PENDING') return fail('P0001', 'Only pending sales can be completed');
+  const lines = rows('sale_items').filter((i) => i.sale_id === p_sale_id);
+  for (const l of lines) {
+    const product = rows('products').find((r) => r.id === l.product_id);
+    if (product.current_stock < l.quantity) return fail('P0001', `Insufficient stock for ${product.name} (available: ${product.current_stock})`);
+  }
+  for (const l of lines) {
+    const product = rows('products').find((r) => r.id === l.product_id);
+    derive('products', Object.assign(product, { current_stock: product.current_stock - l.quantity }));
+    stockTx(product, -l.quantity, 'SALE_DEDUCTION', p_user, { note: sale.sale_number, related_sale_id: sale.id });
+  }
+  Object.assign(sale, { status: 'COMPLETED', completed_at: now() });
+  return { id: sale.id, status: 'COMPLETED' };
+};
+
+rpcHandlers.cancel_sale_atomic = ({ p_sale_id }) => {
+  const sale = rows('sales').find((r) => r.id === p_sale_id);
+  if (!sale) return fail('P0002', 'Sale not found');
+  if (sale.status !== 'PENDING') return fail('P0001', 'Only pending sales can be cancelled');
+  sale.status = 'CANCELLED';
+  return { id: sale.id, status: 'CANCELLED' };
+};
+
+rpcHandlers.create_return_atomic = ({ p_sale_id, p_reason, p_items, p_user }) => {
+  const sale = rows('sales').find((r) => r.id === p_sale_id);
+  if (!sale) return fail('P0002', 'Sale not found');
+  if (sale.status !== 'COMPLETED') return fail('P0001', 'Only completed sales can be returned');
+  const ret = { id: crypto.randomUUID(), return_number: `RET-${returnSeq++}`, sale_id: p_sale_id, reason: p_reason || 'Customer return', total_amount: 0, processed_by: p_user, created_at: now() };
+  const planned = [];
+  for (const { productId, qty } of aggregate(p_items)) {
+    const line = rows('sale_items').find((i) => i.sale_id === p_sale_id && i.product_id === productId);
+    if (!line) return fail('P0001', 'Item is not part of this sale');
+    const already = rows('return_items')
+      .filter((ri) => ri.product_id === productId && rows('returns').find((r) => r.id === ri.return_id)?.sale_id === p_sale_id)
+      .reduce((sum, ri) => sum + ri.quantity, 0);
+    if (qty > line.quantity - already) return fail('P0001', `Return quantity for ${line.product_name} exceeds the remaining returnable quantity (${line.quantity - already})`);
+    planned.push({ line, qty });
+  }
+  for (const { line, qty } of planned) {
+    const subtotal = Number(line.unit_price) * qty;
+    rows('return_items').push({ id: crypto.randomUUID(), return_id: ret.id, product_id: line.product_id, product_name: line.product_name, sku: line.sku, quantity: qty, unit_price: line.unit_price, unit_cost: line.unit_cost, subtotal });
+    ret.total_amount += subtotal;
+    const product = rows('products').find((r) => r.id === line.product_id);
+    derive('products', Object.assign(product, { current_stock: product.current_stock + qty }));
+    stockTx(product, qty, 'RETURN', p_user, { note: `${sale.sale_number} - ${ret.return_number}`, related_sale_id: sale.id, related_return_id: ret.id });
+  }
+  rows('returns').push(ret);
+  sale.refunded_total += ret.total_amount;
+  const allBack = rows('sale_items').filter((i) => i.sale_id === p_sale_id).every((i) => {
+    const done = rows('return_items').filter((ri) => ri.product_id === i.product_id && rows('returns').find((r) => r.id === ri.return_id)?.sale_id === p_sale_id).reduce((sum, ri) => sum + ri.quantity, 0);
+    return done >= i.quantity;
+  });
+  sale.return_status = allBack ? 'RETURNED' : 'PARTIALLY_RETURNED';
+  return { id: ret.id, returnNumber: ret.return_number };
+};
+
+const resetCounters = () => {
+  saleSeq = 1033;
+  returnSeq = 1001;
 };
 
 module.exports = { client, tables, rows, reset, rpcHandlers };
