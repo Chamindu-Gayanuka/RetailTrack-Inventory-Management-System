@@ -4,7 +4,8 @@
  * The base URL comes from VITE_API_URL (see .env.example) and defaults to the local backend.
  */
 
-export const API_URL = String(/** @type {any} */ (import.meta).env?.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
+// Must be written exactly as import.meta.env.VITE_API_URL: Vite substitutes only that expression at build time.
+export const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
 
 const TOKEN_KEY = 'retailtrack-token';
 
