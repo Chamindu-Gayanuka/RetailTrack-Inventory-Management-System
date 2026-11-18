@@ -1,31 +1,39 @@
 import {useState} from 'react';
-import {Check, CheckCircle2, Mail, RotateCcw, ShieldAlert} from 'lucide-react';
+import {Check, CheckCircle2, RotateCcw, ShieldAlert} from 'lucide-react';
 import {useStore} from '../store-context.js';
-import {generateOtp} from '../utils/credentials.js';
+import {api} from '../api/client.js';
 import OtpInput from './OtpInput.jsx';
 
 export default function EmailVerification() {
     const {session, users, markEmailVerified, notify} = useStore();
     const currentUser = users.find((user) => user.id === session.userId);
     const verified = currentUser?.emailVerified === true;
-    const [challenge, setChallenge] = useState(/** @type {{ code: string, expiresAt: number } | null} */ (null));
+    const [challenge, setChallenge] = useState(/** @type {{ expiresAt: number } | null} */ (null));
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
 
-    const sendCode = () => {
-        setChallenge({code: generateOtp(), expiresAt: Date.now() + 10 * 60 * 1000});
+    const sendCode = async () => {
+        try {
+            await api.post('/auth/email-verification/send');
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Could not send the code.');
+            return;
+        }
+        setChallenge({expiresAt: Date.now() + 10 * 60 * 1000});
         setCode('');
         setError('');
-        notify('A new email verification code is ready.', 'info');
+        notify('A verification code was emailed to you.', 'info');
     };
 
-    const verify = () => {
+    const verify = async () => {
         if (!challenge || Date.now() >= challenge.expiresAt) {
             setError('This code has expired. Resend a new verification code.');
             return;
         }
-        if (code.length !== 6 || code !== challenge.code) {
-            setError('Enter the correct six-digit verification code.');
+        try {
+            await api.post('/auth/email-verification/confirm', {otp: code});
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Verification failed.');
             return;
         }
         markEmailVerified();
@@ -50,14 +58,7 @@ export default function EmailVerification() {
                     verification code
                 </button>
                 {challenge && <div className="email-verification-challenge">
-                    <div className="local-code-callout"><Mail size={18}/>
-                        <div><strong>Local verification code</strong><span>Email service is not configured. Use this code within 10 minutes:</span>
-                        </div>
-                        <button type="button" onClick={() => {
-                            setCode(challenge.code);
-                            setError('');
-                        }}>{challenge.code}</button>
-                    </div>
+                    <p className="email-code-hint">We emailed a six-digit code to your address. It expires in 10 minutes.</p>
                     <label>Verification code</label>
                     <OtpInput value={code} onChange={(value) => {
                         setCode(value);

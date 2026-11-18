@@ -277,8 +277,8 @@ export default function Products({navigate, viewId, initialCategory}) {
             <Modal open={Boolean(deleteTarget)} onClose={() => setDeleteId(null)} title="Delete product?"
                    subtitle={deleteTarget ? `Remove ${deleteTarget.name} from the catalog.` : ''} footer={<>
                 <button className="button button-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
-                <button className="button button-danger" onClick={() => {
-                    if (deleteTarget && deleteProduct(deleteTarget.id)) setDeleteId(null);
+                <button className="button button-danger" onClick={async () => {
+                    if (deleteTarget && await deleteProduct(deleteTarget.id)) setDeleteId(null);
                 }}><Trash2 size={16}/>Delete Product
                 </button>
             </>}><p className="modal-paragraph">Products with sales or inventory history cannot be deleted. Deactivate
@@ -334,16 +334,17 @@ export function ProductForm({navigate, productId}) {
         return Object.keys(next).length === 0;
     };
 
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!validate()) return;
         let categoryId = form.categoryId;
         if (categoryId === '__other') {
-            const category = addCategory({
+            const category = await addCategory({
                 name: newCategoryName.trim(),
                 description: `Created while adding ${form.name.trim()}.`,
                 color: '#6574e8'
             });
+            if (!category) return;
             categoryId = category.id;
         }
         const payload = {
@@ -353,8 +354,8 @@ export function ProductForm({navigate, productId}) {
             name: form.name.trim(),
             stock: existing ? existing.stock : Number(form.stock || 0)
         };
-        if (existing) updateProduct(existing.id, payload);
-        else addProduct(payload);
+        const saved = existing ? await updateProduct(existing.id, payload) : await addProduct(payload);
+        if (saved === false || saved === null) return; // the server rejected it; stay on the form
         navigate('products');
     };
 

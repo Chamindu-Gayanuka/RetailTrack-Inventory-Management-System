@@ -13,14 +13,14 @@ import {
     ShieldCheck
 } from 'lucide-react';
 import {useStore} from '../store-context.js';
+import {api} from '../api/client.js';
 import OtpInput from '../components/OtpInput.jsx';
 import {getPasswordStrength, maskEmail, passwordValidationError} from '../utils/credentials.js';
 import {
     clearPasswordReset,
-    createPasswordReset,
     isPasswordResetVerified,
     readPasswordReset,
-    verifyPasswordReset
+    savePasswordReset
 } from '../utils/passwordReset.js';
 
 /** @typedef {(path: string) => void} Navigate */
@@ -46,37 +46,26 @@ function AuthShell({navigate, icon: Icon, title, description, children}) {
     );
 }
 
-/** @param {{ code: string, onUse: (code: string) => void }} props */
-function LocalCodeNotice({code, onUse}) {
-    return (
-        <div className="local-code-callout">
-            <Mail size={19}/>
-            <div><strong>Local verification code</strong><span>Email service is not configured. Use this code to continue:</span>
-            </div>
-            <button type="button" onClick={() => onUse(code)} title="Fill the verification code">{code}</button>
-        </div>
-    );
-}
-
 /** @param {{ navigate: Navigate }} props */
 export function ForgotPassword({navigate}) {
-    const {findAccountByEmail} = useStore();
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
 
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         setError('');
         if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
             setError('Enter a valid email address.');
             return;
         }
-        const account = findAccountByEmail(email);
-        if (!account) {
-            setError('No active account is registered with this email address.');
+        // The server never reveals whether the address has an account; it emails a code if it does.
+        try {
+            await api.post('/auth/forgot-password', {email: email.trim()}, {auth: false});
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Could not send the code. Try again.');
             return;
         }
-        createPasswordReset(account.email);
+        savePasswordReset({email: email.trim().toLowerCase(), code: '', expiresAt: Date.now() + 10 * 60 * 1000, attempts: 0, verified: false});
         navigate('verify-otp');
     };
 
@@ -94,8 +83,7 @@ export function ForgotPassword({navigate}) {
                 {error && <div className="login-error" role="alert">{error}</div>}
                 <button className="login-submit" type="submit">Send verification code <ArrowRight size={18}/></button>
             </form>
-            <p className="recovery-help">A local verification code will be shown on the next page until an email service
-                is connected.</p>
+            <p className="recovery-help">If the address belongs to an account, a six-digit code will be emailed to it.</p>
         </AuthShell>
     );
 }
@@ -121,7 +109,7 @@ export function VerifyOtp({navigate}) {
 
     const seconds = Math.max(0, Math.ceil((flow.expiresAt - now) / 1000));
     const timer = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         setError('');
         setMessage('');
@@ -129,31 +117,32 @@ export function VerifyOtp({navigate}) {
             setError('Enter all six digits of your verification code.');
             return;
         }
-        const result = verifyPasswordReset(flow, code);
-        setFlow(result.flow);
-        if (!result.ok) {
-            setError(result.message);
+        try {
+            const json = await api.post('/auth/verify-reset-otp', {email: flow.email, otp: code}, {auth: false});
+            setFlow(savePasswordReset({...flow, verified: true, verifiedAt: Date.now(), attempts: 0, resetToken: json.data.resetToken}));
+            navigate('reset-password');
+        } catch (requestError) {
+            setFlow(savePasswordReset({...flow, attempts: flow.attempts + 1}));
+            setError(requestError instanceof Error ? requestError.message : 'Verification failed.');
             setCode('');
-            return;
         }
-        navigate('reset-password');
     };
-    const resend = () => {
-        const next = createPasswordReset(flow.email);
-        setFlow(next);
-        setNow(Date.now());
-        setCode('');
-        setError('');
-        setMessage('A new verification code is ready.');
+    const resend = async () => {
+        try {
+            await api.post('/auth/forgot-password', {email: flow.email}, {auth: false});
+            setFlow(savePasswordReset({email: flow.email, code: '', expiresAt: Date.now() + 10 * 60 * 1000, attempts: 0, verified: false}));
+            setNow(Date.now());
+            setCode('');
+            setError('');
+            setMessage('A new verification code was sent.');
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Could not send a new code.');
+        }
     };
 
     return (
         <AuthShell navigate={navigate} icon={ShieldCheck} title="Verify your code"
-                   description={`Enter the six-digit code prepared for ${maskEmail(flow.email)}.`}>
-            <LocalCodeNotice code={flow.code} onUse={(value) => {
-                setCode(value);
-                setError('');
-            }}/>
+                   description={`Enter the six-digit code emailed to ${maskEmail(flow.email)}.`}>
             <form onSubmit={submit}>
                 <div className="otp-field"><label>Verification code</label><OtpInput value={code} onChange={(value) => {
                     setCode(value);
@@ -176,7 +165,6 @@ export function VerifyOtp({navigate}) {
 
 /** @param {{ navigate: Navigate }} props */
 export function ResetPassword({navigate}) {
-    const {resetPassword} = useStore();
     const [flow] = useState(readPasswordReset);
     const [password, setPassword] = useState('');
     const [confirmation, setConfirmation] = useState('');
@@ -198,7 +186,7 @@ export function ResetPassword({navigate}) {
                 onClick={() => navigate(flow ? 'verify-otp' : 'forgot-password')}>{flow ? 'Return to verification' : 'Start password recovery'}</button>
     </AuthShell>;
 
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         setError('');
         if (!isPasswordResetVerified(flow)) {
@@ -214,8 +202,10 @@ export function ResetPassword({navigate}) {
             setError('New passwords do not match.');
             return;
         }
-        if (!resetPassword(flow.email, password)) {
-            setError('This account is no longer available. Start a new recovery request.');
+        try {
+            await api.post('/auth/reset-password', {resetToken: flow.resetToken, newPassword: password}, {auth: false});
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Could not reset the password. Start a new recovery request.');
             return;
         }
         clearPasswordReset();
