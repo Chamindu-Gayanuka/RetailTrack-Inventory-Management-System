@@ -1,30 +1,18 @@
 import {useState} from 'react';
-import {Eye, EyeOff, LockKeyhole, Mail, PackageOpen, ShieldCheck, ShoppingCart, Warehouse} from 'lucide-react';
-import {loginAccounts} from '../data.js';
+import {Eye, EyeOff, LockKeyhole, Mail, PackageOpen} from 'lucide-react';
 import {useStore} from '../store-context.js';
-
-const roleIcons = {Administrator: ShieldCheck, 'Inventory Staff': Warehouse, Cashier: ShoppingCart};
 
 /** @param {{ onLogin: (account: import('../types.js').AuthAccount, remember: boolean) => void, navigate: (path: string) => void }} props */
 export default function Login({onLogin, navigate}) {
-    const {settings, authenticate, getAuthAccount} = useStore();
+    const {settings, authenticate} = useStore();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [remember, setRemember] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
-    const [selectedRole, setSelectedRole] = useState('Administrator');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const fillAccount = (/** @type {import('../types.js').AuthAccount} */ account) => {
-        const current = getAuthAccount(account.userId) || account;
-        setEmail(current.email);
-        setPassword(current.password);
-        setSelectedRole(account.role);
-        setError('');
-    };
-
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         setError('');
         if (!/^\S+@\S+\.\S+$/.test(email)) {
@@ -35,12 +23,20 @@ export default function Login({onLogin, navigate}) {
             setError('Enter your password.');
             return;
         }
-        const account = authenticate(email, password);
+        setLoading(true);
+        let account;
+        try {
+            account = await authenticate(email, password);
+        } catch (error) {
+            setLoading(false);
+            setError(error instanceof Error ? error.message : 'Sign in failed. Please try again.');
+            return;
+        }
         if (!account) {
+            setLoading(false);
             setError('The email or password you entered is incorrect. Please try again.');
             return;
         }
-        setLoading(true);
         window.setTimeout(() => onLogin(account, remember), 550);
     };
 
@@ -82,24 +78,6 @@ export default function Login({onLogin, navigate}) {
                     <button className="login-submit" type="submit" disabled={loading}>{loading ? <><span
                         className="button-spinner"/>Signing in…</> : 'Sign In'}</button>
                 </form>
-                <div className="account-role-section">
-                    <div className="account-role-title"><span>Available accounts</span><small>Select a role to
-                        autofill</small></div>
-                    <div className="account-role-grid">
-                        {loginAccounts.map((account) => {
-                            const Icon = roleIcons[account.role];
-                            const shortRole = account.role === 'Administrator' ? 'Admin' : account.role === 'Inventory Staff' ? 'Inventory' : 'Cashier';
-                            return <button type="button" key={account.userId}
-                                           className={selectedRole === account.role ? 'active' : ''}
-                                           onClick={() => fillAccount(account)}><Icon
-                                size={18}/><strong>{shortRole}</strong><small>{account.name.split(' ')[0]}</small>
-                            </button>;
-                        })}
-                    </div>
-                    <div className="login-account-detail">
-                        <span>{selectedRole}</span><code>{loginAccounts.find((account) => account.role === selectedRole)?.email}</code>
-                    </div>
-                </div>
                 <p className="login-restricted">System access is restricted to authorized personnel only.</p>
             </section>
             <footer className="login-footer"><strong>{settings.storeName} <span>-</span> {settings.location}

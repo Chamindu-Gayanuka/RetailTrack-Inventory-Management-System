@@ -7,7 +7,6 @@ import {
     ChevronRight,
     Database,
     Download,
-    HardDrive,
     KeyRound,
     LockKeyhole,
     Mail,
@@ -24,7 +23,8 @@ import {rolePermissions} from '../data.js';
 import {Avatar, Field, Modal, PageHeader, Toggle} from '../components/UI.jsx';
 import PrettySelect from '../components/PrettySelect.jsx';
 import EmailVerification from '../components/EmailVerification.jsx';
-import {downloadBackupJson, readBackupFile} from '../utils/backup.js';
+import {readBackupFile} from '../utils/backup.js';
+import {downloadFile} from '../api/client.js';
 import {downloadBusinessPdf} from '../utils/pdf.js';
 
 export default function Settings() {
@@ -54,9 +54,13 @@ export default function Settings() {
     }));
 
     const backupData = {settings, profile, products, categories, sales, returns, purchaseOrders, users, transactions};
-    const downloadDataExport = () => {
-        downloadBackupJson(backupData);
-        notify('JSON backup downloaded.');
+    const downloadDataExport = async () => {
+        try {
+            await downloadFile('/backup/export', `retailtrack-backup-${new Date().toISOString().slice(0, 10)}.json`);
+            notify('JSON backup downloaded.');
+        } catch (error) {
+            notify(error instanceof Error ? error.message : 'The backup could not be downloaded.', 'error');
+        }
     };
     const downloadDataPdf = () => {
         downloadBusinessPdf(backupData);
@@ -68,21 +72,14 @@ export default function Settings() {
         if (!file) return;
         setImportError('');
         try {
-            const data = await readBackupFile(file);
-            setImportCandidate({fileName: file.name, data});
+            const {data, summary} = await readBackupFile(file);
+            setImportCandidate({fileName: file.name, data, summary});
         } catch (error) {
             const message = error instanceof Error ? error.message : 'The selected backup could not be read.';
             setImportError(message);
             notify(message, 'error');
         }
     };
-
-    let storageBytes = 0;
-    try {
-        storageBytes = Object.keys(localStorage).filter((key) => key.startsWith('retailtrack-')).reduce((total, key) => total + new Blob([key, localStorage.getItem(key) || '']).size, 0);
-    } catch { /* Storage information is unavailable when browser storage is blocked. */
-    }
-    const storageLabel = storageBytes >= 1024 * 1024 ? `${(storageBytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(storageBytes / 1024))} KB`;
 
     return (
         <div>
@@ -103,7 +100,7 @@ export default function Settings() {
                         <ShieldCheck size={18}/><span><strong>Security</strong><small>Sessions and access</small></span><ChevronRight
                         size={15}/></button>
                     <button className={tab === 'data' ? 'active' : ''} onClick={() => setTab('data')}><Database
-                        size={18}/><span><strong>Data & Storage</strong><small>Exports and local usage</small></span><ChevronRight
+                        size={18}/><span><strong>Data & Storage</strong><small>Backups and exports</small></span><ChevronRight
                         size={15}/></button>
                 </aside>
                 <section className="card settings-panel">
@@ -224,23 +221,19 @@ export default function Settings() {
                             </button>
                         </div>
                         {importError && <div className="backup-import-error" role="alert">{importError}</div>}
-                        <div className="info-callout">Backup imports replace business records but do not import or
-                            change local account passwords.
+                        <div className="info-callout">Backup imports replace business records on the server but never
+                            import or change account passwords. You will be asked for your password to confirm.
                         </div>
-                        <div className="data-action-card"><span><HardDrive size={22}/></span>
-                            <div><strong>Browser storage</strong><p>Records are saved automatically in this browser.
-                                Export regularly to keep an external backup.</p></div>
-                            <strong className="data-storage-value">{storageLabel}</strong></div>
                     </>}
                 </section>
             </div>
             <Modal open={Boolean(importCandidate)} onClose={() => setImportCandidate(null)}
                    title="Import backup and replace current data?" subtitle={importCandidate?.fileName || ''} footer={<>
                 <button className="button button-secondary" onClick={() => setImportCandidate(null)}>Cancel</button>
-                <button className="button button-primary" onClick={() => {
+                <button className="button button-primary" onClick={async () => {
                     if (!importCandidate) return;
-                    importBackup(importCandidate.data);
-                    setImportCandidate(null);
+                    const imported = await importBackup(importCandidate.data);
+                    if (imported !== false) setImportCandidate(null);
                 }}><Upload size={16}/>Import & Replace
                 </button>
             </>}>
@@ -248,13 +241,13 @@ export default function Settings() {
                     <div className="backup-import-summary"><p>This validated backup contains the following records.
                         Current business data will be replaced.</p>
                         <div className="data-summary-grid">
-                            <div><strong>{importCandidate.data.products.length}</strong><span>Products</span></div>
-                            <div><strong>{importCandidate.data.sales.length}</strong><span>Sales</span></div>
-                            <div><strong>{importCandidate.data.users.length}</strong><span>Users</span></div>
-                            <div><strong>{importCandidate.data.transactions.length}</strong><span>Movements</span></div>
+                            <div><strong>{importCandidate.summary.products ?? 0}</strong><span>Products</span></div>
+                            <div><strong>{importCandidate.summary.sales ?? 0}</strong><span>Sales</span></div>
+                            <div><strong>{importCandidate.summary.usersToAdd ?? 0}</strong><span>New users</span></div>
+                            <div><strong>{importCandidate.summary.inventoryTransactions ?? 0}</strong><span>Movements</span></div>
                         </div>
-                        <div className="info-callout">Local passwords are not included in the backup and will remain
-                            unchanged.
+                        <div className="info-callout">Passwords are never included in a backup. Existing user accounts and
+                            their passwords stay unchanged.
                         </div>
                     </div>}
             </Modal>
@@ -273,7 +266,7 @@ function PasswordModal({open, onClose}) {
             setError('');
         }
     }, [open]);
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!form.current) {
             setError('Enter your current password.');
@@ -283,7 +276,7 @@ function PasswordModal({open, onClose}) {
             setError('New passwords do not match.');
             return;
         }
-        const result = changePassword(form.current, form.next);
+        const result = await changePassword(form.current, form.next);
         if (!result.ok) {
             setError(result.message);
             return;
@@ -317,15 +310,14 @@ function PasswordModal({open, onClose}) {
 
 export function Profile() {
     const {profile, session, users, updateProfile, notify} = useStore();
-    const primary = session.userId === 'u1';
     const currentUser = users.find((user) => user.id === session.userId);
     const emailVerified = currentUser?.emailVerified === true;
     /** @type {{ name: string, email: string, phone: string, avatar?: string | null, role: import('../types.js').Role }} */
     const account = {
-        name: primary ? profile.name : session.name,
-        email: primary ? profile.email : session.email,
-        phone: primary ? profile.phone || '' : users.find((user) => user.id === session.userId)?.phone || '',
-        avatar: primary ? profile.avatar : session.avatar,
+        name: session.name,
+        email: session.email,
+        phone: currentUser?.phone || profile.phone || '',
+        avatar: session.avatar,
         role: session.role,
     };
     const [form, setForm] = useState(account);

@@ -28,7 +28,7 @@ function AddUserModal({open, onClose}) {
             setErrors({});
         }
     }, [open]);
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         /** @type {{ name?: string, email?: string }} */
         const next = {};
@@ -37,7 +37,8 @@ function AddUserModal({open, onClose}) {
         if (users.some((user) => user.email.toLowerCase() === form.email.toLowerCase())) next.email = 'A user with this email already exists.';
         setErrors(next);
         if (Object.keys(next).length) return;
-        addUser(form);
+        const created = await addUser(form);
+        if (created === null) return; // the server rejected it; keep the form open
         onClose();
     };
     return <Modal open={open} onClose={onClose} title="Add a system user"
@@ -81,7 +82,7 @@ function AddUserModal({open, onClose}) {
 }
 
 export default function Users() {
-    const {users, profile, toggleUser, session} = useStore();
+    const {users, toggleUser, session} = useStore();
     const [addOpen, setAddOpen] = useState(false);
     return (
         <div>
@@ -122,9 +123,9 @@ export default function Users() {
                         {users.map((user) => <tr key={user.id}>
                             <td data-label="User" data-wide="true">
                                 <div className="user-cell"><Avatar name={user.name}
-                                                                   src={user.id === session.userId ? session.avatar : user.id === 'u1' ? profile.avatar : null}/>
+                                                                   src={user.id === session.userId ? session.avatar : user.avatar}/>
                                     <div><strong>{user.name}{user.id === session.userId && <span
-                                        className="you-badge">You</span>}</strong><span>{user.id === 'u1' ? 'Primary account' : `User ID · ${user.id.toUpperCase()}`}</span>
+                                        className="you-badge">You</span>}</strong><span>{`User ID · ${user.id.slice(0, 8).toUpperCase()}`}</span>
                                     </div>
                                 </div>
                             </td>
@@ -143,7 +144,7 @@ export default function Users() {
                             <td data-label="Access">
                                 <button
                                     className={`button button-small ${user.active ? 'button-secondary' : 'button-primary'}`}
-                                    onClick={() => toggleUser(user.id)} disabled={user.id === 'u1'}><Power
+                                    onClick={() => toggleUser(user.id)} disabled={user.id === session.userId}><Power
                                     size={14}/>{user.active ? 'Deactivate' : 'Activate'}</button>
                             </td>
                         </tr>)}
