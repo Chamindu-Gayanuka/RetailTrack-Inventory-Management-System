@@ -53,13 +53,13 @@ export default function Returns({navigate}) {
             return next;
         });
     };
-    const processReturn = () => {
+    const processReturn = async () => {
         if (!selectedSale) return;
         const items = Object.entries(quantities).filter(([, qty]) => qty > 0).map(([productId, qty]) => ({
             productId,
             qty
         }));
-        const record = createReturn({saleId: selectedSale.id, reason, items});
+        const record = await createReturn({saleId: selectedSale.id, reason, items});
         if (record) closeReturn();
     };
     const exportReturns = () => {

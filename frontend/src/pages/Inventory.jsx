@@ -46,13 +46,13 @@ function PurchaseOrderModal({product, onClose}) {
         }
     }, [product]);
     if (!product) return null;
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!Number(quantity) || Number(quantity) < 1) {
             notify('Purchase order quantity must be at least 1 unit.', 'error');
             return;
         }
-        const order = createPurchaseOrder({productId: product.id, quantity: Number(quantity), supplier});
+        const order = await createPurchaseOrder({productId: product.id, quantity: Number(quantity), supplier});
         if (!order) return;
         downloadPurchaseOrderPdf(order, settings);
         notify(`${order.id} downloaded as PDF.`);

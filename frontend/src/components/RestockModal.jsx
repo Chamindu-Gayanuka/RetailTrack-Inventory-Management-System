@@ -23,7 +23,7 @@ export default function RestockModal({open, onClose, product = null}) {
     }, [open, product]);
 
     const selected = useMemo(() => products.find((item) => item.id === productId), [productId, products]);
-    const submit = (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
+    const submit = async (/** @type {import('react').FormEvent<HTMLFormElement>} */ event) => {
         event.preventDefault();
         if (!selected) {
             setError('Select a product to restock.');
@@ -33,7 +33,7 @@ export default function RestockModal({open, onClose, product = null}) {
             setError('Enter a quantity greater than zero.');
             return;
         }
-        if (restock(productId, Number(quantity), note)) onClose();
+        if (await restock(productId, Number(quantity), note)) onClose();
     };
 
     return (

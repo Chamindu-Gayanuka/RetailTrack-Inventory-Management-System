@@ -306,12 +306,12 @@ export function NewSale({navigate}) {
         if (qty <= 0) setCart((current) => current.filter((item) => item.productId !== productId));
         else setCart((current) => current.map((item) => item.productId === productId ? {...item, qty} : item));
     };
-    const complete = (/** @type {string} */ status = 'Completed') => {
+    const complete = async (/** @type {string} */ status = 'Completed') => {
         if (!cart.length) {
             setError('Add at least one product before completing the sale.');
             return;
         }
-        const sale = createSale({customer, items: cart, payment, status});
+        const sale = await createSale({customer, items: cart, payment, status});
         if (sale) navigate(`sales/view/${sale.id}`);
     };
 
