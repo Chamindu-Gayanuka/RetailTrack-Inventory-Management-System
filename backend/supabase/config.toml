@@ -3,7 +3,8 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "backend"
+# Local project name used by the Supabase CLI. It is independent of the cloud project name.
+project_id = "retailtrack"
 
 [api]
 enabled = true
@@ -66,7 +67,8 @@ max_client_conn = 100
 enabled = true
 # Specifies an ordered list of schema files, directories, or glob patterns that describe your database.
 # Supports paths relative to supabase directory: "./schemas/*.sql", "./database".
-schema_paths = []
+# The SQL migration in this folder is the local source of truth.
+schema_paths = ["./migrations"]
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
@@ -111,13 +113,14 @@ openai_api_key = "env(OPENAI_API_KEY)"
 enabled = true
 # Port to use for the email testing server web interface.
 port = 54324
-# Uncomment to expose additional ports for testing user applications that send emails.
-# smtp_port = 54325
+# SMTP port used by the backend for local email testing. Messages appear in the local email web UI.
+smtp_port = 54325
 # pop3_port = 54326
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
 [storage]
+# Product images are stored by the backend in Cloudinary, so local Supabase Storage is not used.
 enabled = false
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
@@ -389,8 +392,8 @@ allow_dynamic_registration = false
 [edge_runtime]
 enabled = false
 # Supported request policies: `oneshot`, `per_worker`.
-# `per_worker` (default) — enables hot reload during local development.
-# `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
+# `per_worker` (default) - enables hot reload during local development.
+# `oneshot` - fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
 policy = "per_worker"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8083
