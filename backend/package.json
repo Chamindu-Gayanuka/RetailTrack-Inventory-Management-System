@@ -25,7 +25,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test \"tests/**/*.test.js\""
+    "test": "node --test tests"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -37,6 +37,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
     "nodemailer": "^10.6.0",
     "zod": "^4.1.12"
   }
