@@ -2,7 +2,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp } = require('./helpers');
+const { startApp, fake } = require('./helpers');
 
 let app;
 before(async () => {
@@ -15,6 +15,28 @@ test('GET /api/health returns ok', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.success, true);
   assert.equal(res.body.data.status, 'ok');
+});
+
+test('GET /api/health/db queries the database and returns no rows', async () => {
+  fake.reset();
+  fake.rows('categories').push({ id: 'category-1', name: 'Drinks' });
+  const res = await app.request('GET', '/api/health/db');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.success, true);
+  assert.deepEqual(Object.keys(res.body.data).sort(), ['database', 'timestamp']);
+  assert.equal(res.body.data.database, 'ok');
+});
+
+test('GET /api/health/db returns 503 without error details when the database fails', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const from = t.mock.method(fake.client, 'from', () => ({
+    select: () => ({ limit: async () => ({ data: null, error: { message: 'secret connection detail' } }) }),
+  }));
+  const res = await app.request('GET', '/api/health/db');
+  assert.equal(from.mock.callCount(), 1);
+  assert.deepEqual(from.mock.calls[0].arguments, ['categories']);
+  assert.equal(res.status, 503);
+  assert.deepEqual(res.body, { success: false, message: 'Database is unreachable.' });
 });
 
 test('unknown routes return a JSON 404', async () => {
